@@ -1,33 +1,161 @@
+import { useState, useEffect, useCallback } from "react";
 import {
   Plus,
-  FolderOpen,
-  History,
   Terminal,
+  ChevronDown,
   ChevronRight,
+  Play,
+  MessageSquare,
+  Wrench,
 } from "lucide-react";
 import type { Project } from "../../types/project";
-import { shortenPath } from "../../lib/utils";
-
-type SidebarView = "projects" | "sessions";
+import type { Session } from "../../types/session";
+import { formatRelativeTime } from "../../lib/constants";
+import { getSessions } from "../../lib/ipc";
 
 interface SidebarProps {
   projects: Project[];
   onLaunchProject: (project: Project) => void;
   onAddProject: () => void;
-  onShowSessions: () => void;
   onNewTerminal: () => void;
-  activeView: SidebarView;
-  onViewChange: (view: SidebarView) => void;
+  onResumeSession: (sessionId: string, cwd: string) => void;
+}
+
+function formatModel(model: string | null): string {
+  if (!model) return "";
+  if (model.includes("opus")) return "Op";
+  if (model.includes("sonnet")) return "So";
+  if (model.includes("haiku")) return "Ha";
+  return "";
+}
+
+function getDisplayTitle(session: Session): string {
+  if (session.custom_title) return session.custom_title;
+  if (session.first_user_message) return session.first_user_message;
+  if (session.slug) return session.slug;
+  return session.session_id.slice(0, 8);
+}
+
+function ProjectSection({
+  project,
+  onLaunch,
+  onResume,
+}: {
+  project: Project;
+  onLaunch: () => void;
+  onResume: (sessionId: string, cwd: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  const loadSessions = useCallback(async () => {
+    if (loaded) return;
+    setLoading(true);
+    try {
+      const data = await getSessions(20, project.path);
+      setSessions(data);
+      setLoaded(true);
+    } catch (err) {
+      console.error("Failed to load sessions for", project.name, err);
+    } finally {
+      setLoading(false);
+    }
+  }, [project.path, loaded, project.name]);
+
+  useEffect(() => {
+    if (expanded && !loaded) {
+      loadSessions();
+    }
+  }, [expanded, loaded, loadSessions]);
+
+  return (
+    <div>
+      {/* Project header */}
+      <div className="flex items-center gap-1 group">
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-2 flex-1 min-w-0 px-2 py-2 rounded-lg text-left hover:bg-white/5"
+        >
+          {expanded ? (
+            <ChevronDown size={13} className="text-foreground-muted flex-shrink-0" />
+          ) : (
+            <ChevronRight size={13} className="text-foreground-muted flex-shrink-0" />
+          )}
+          <div
+            className="w-2 h-2 rounded-full flex-shrink-0"
+            style={{ backgroundColor: project.color }}
+          />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm text-foreground truncate">
+              {project.name}
+            </div>
+          </div>
+        </button>
+        <button
+          onClick={onLaunch}
+          className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-accent-cyan/20 text-foreground-muted hover:text-accent-cyan flex-shrink-0 mr-1"
+          title={`Launch ${project.terminals} terminal${project.terminals > 1 ? "s" : ""}`}
+        >
+          <Play size={12} />
+        </button>
+      </div>
+
+      {/* Sessions dropdown */}
+      {expanded && (
+        <div className="ml-5 border-l border-card-border pl-2 mb-1">
+          {loading ? (
+            <div className="px-2 py-2 text-xs text-foreground-muted">
+              Loading...
+            </div>
+          ) : sessions.length === 0 ? (
+            <div className="px-2 py-2 text-xs text-foreground-muted">
+              No sessions yet
+            </div>
+          ) : (
+            sessions.map((session) => (
+              <button
+                key={session.session_id}
+                onClick={() => onResume(session.session_id, session.cwd)}
+                className="w-full text-left px-2 py-1.5 rounded-md hover:bg-white/5 group/session"
+              >
+                <div className="text-xs text-foreground truncate leading-relaxed">
+                  {getDisplayTitle(session)}
+                </div>
+                <div className="flex items-center gap-2 mt-0.5 text-[10px] text-foreground-muted">
+                  <span>{formatRelativeTime(session.last_message)}</span>
+                  <span className="flex items-center gap-0.5">
+                    <MessageSquare size={9} />
+                    {session.message_count}
+                  </span>
+                  {session.tool_call_count > 0 && (
+                    <span className="flex items-center gap-0.5">
+                      <Wrench size={9} />
+                      {session.tool_call_count}
+                    </span>
+                  )}
+                  {formatModel(session.model) && (
+                    <span className="px-1 rounded bg-white/5 font-medium">
+                      {formatModel(session.model)}
+                    </span>
+                  )}
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function Sidebar({
   projects,
   onLaunchProject,
   onAddProject,
-  onShowSessions,
   onNewTerminal,
-  activeView,
-  onViewChange,
+  onResumeSession,
 }: SidebarProps) {
   return (
     <div className="w-56 flex flex-col bg-background-secondary/50 border-r border-card-border h-full">
@@ -42,73 +170,24 @@ export function Sidebar({
         </button>
       </div>
 
-      {/* Nav tabs */}
-      <div className="px-3 flex gap-1 mb-2">
-        <button
-          onClick={() => onViewChange("projects")}
-          className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${
-            activeView === "projects"
-              ? "bg-white/10 text-foreground"
-              : "text-foreground-muted hover:text-foreground"
-          }`}
-        >
-          <FolderOpen size={13} className="inline mr-1" />
-          Projects
-        </button>
-        <button
-          onClick={() => {
-            onViewChange("sessions");
-            onShowSessions();
-          }}
-          className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${
-            activeView === "sessions"
-              ? "bg-white/10 text-foreground"
-              : "text-foreground-muted hover:text-foreground"
-          }`}
-        >
-          <History size={13} className="inline mr-1" />
-          Sessions
-        </button>
-      </div>
+      {/* Projects + sessions */}
+      <div className="flex-1 overflow-y-auto px-2 pb-3">
+        {projects.map((project) => (
+          <ProjectSection
+            key={project.id}
+            project={project}
+            onLaunch={() => onLaunchProject(project)}
+            onResume={onResumeSession}
+          />
+        ))}
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto px-3 pb-3">
-        {activeView === "projects" && (
-          <div className="space-y-1">
-            {projects.map((project) => (
-              <button
-                key={project.id}
-                onClick={() => onLaunchProject(project)}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-white/5 group"
-              >
-                <div
-                  className="w-2 h-2 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: project.color }}
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm text-foreground truncate">
-                    {project.name}
-                  </div>
-                  <div className="path-text truncate">
-                    {shortenPath(project.path)}
-                  </div>
-                </div>
-                <ChevronRight
-                  size={14}
-                  className="text-foreground-muted opacity-0 group-hover:opacity-100"
-                />
-              </button>
-            ))}
-
-            <button
-              onClick={onAddProject}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-foreground-muted hover:text-foreground hover:bg-white/5"
-            >
-              <Plus size={15} />
-              <span>Add Project</span>
-            </button>
-          </div>
-        )}
+        <button
+          onClick={onAddProject}
+          className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-foreground-muted hover:text-foreground hover:bg-white/5 mt-1"
+        >
+          <Plus size={15} />
+          <span>Add Project</span>
+        </button>
       </div>
     </div>
   );

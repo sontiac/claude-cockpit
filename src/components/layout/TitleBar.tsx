@@ -20,7 +20,20 @@ export function TitleBar() {
   const handleClose = () => appWindow.close();
 
   return (
-    <div className="titlebar-drag h-10 flex items-center justify-between px-4 bg-background/80 backdrop-blur-md border-b border-card-border select-none">
+    <div
+      className="h-10 flex items-center justify-between px-4 bg-background/80 backdrop-blur-md border-b border-card-border select-none"
+      onMouseDown={(e) => {
+        // Only drag on the bar itself, not on buttons
+        if ((e.target as HTMLElement).closest("[data-nodrag]")) return;
+        if (e.buttons === 1) {
+          appWindow.startDragging();
+        }
+      }}
+      onDoubleClick={(e) => {
+        if ((e.target as HTMLElement).closest("[data-nodrag]")) return;
+        handleMaximize();
+      }}
+    >
       {/* macOS traffic light spacing */}
       <div className="w-20" />
 
@@ -29,7 +42,7 @@ export function TitleBar() {
         <span>Cockpit</span>
       </div>
 
-      <div className="titlebar-nodrag flex items-center gap-1">
+      <div className="flex items-center gap-1" data-nodrag>
         <button
           onClick={handleMinimize}
           className="p-1.5 rounded-md hover:bg-white/10 text-foreground-muted hover:text-foreground"

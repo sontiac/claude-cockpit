@@ -26,7 +26,7 @@ export function useTerminals() {
 
       let command = options?.command ?? null;
       if (options?.resumeSessionId) {
-        command = `${DEFAULT_COMMAND} --resume '${options.resumeSessionId}'`;
+        command = `${DEFAULT_COMMAND} --resume ${options.resumeSessionId}`;
       }
 
       try {

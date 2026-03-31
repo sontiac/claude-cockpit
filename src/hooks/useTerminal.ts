@@ -86,25 +86,10 @@ export function useTerminal({ id, onStatusChange, onExit }: UseTerminalOptions) 
       termRef.current = term;
       fitRef.current = fitAddon;
 
-      // Track whether this is the initial output burst (startup).
-      // After startup settles, scroll to top so user sees the beginning.
-      let startupTimer: ReturnType<typeof setTimeout> | null = null;
-      let startupDone = false;
-
       // Listen for output from PTY
       const unlistenOutput = onTerminalOutput(id, (data) => {
         const bytes = new Uint8Array(data);
         term.write(bytes);
-
-        // During startup, keep resetting a timer. Once output stops
-        // for 300ms we consider startup complete and scroll to top.
-        if (!startupDone) {
-          if (startupTimer) clearTimeout(startupTimer);
-          startupTimer = setTimeout(() => {
-            startupDone = true;
-            term.scrollToTop();
-          }, 300);
-        }
       });
 
       // Listen for status changes
@@ -117,24 +102,23 @@ export function useTerminal({ id, onStatusChange, onExit }: UseTerminalOptions) 
         onExit?.(code);
       });
 
-      // Resize on window resize
+      // Resize on container size changes
       const resizeObserver = new ResizeObserver(() => {
         fitAddon.fit();
       });
       resizeObserver.observe(container);
 
-      // Initial resize to tell PTY our actual size
+      // Initial resize to tell PTY our actual size after layout settles
       setTimeout(() => {
         fitAddon.fit();
         const dims = fitAddon.proposeDimensions();
         if (dims) {
           ptyResize(id, dims.cols, dims.rows).catch(console.error);
         }
-      }, 100);
+      }, 50);
 
       // Cleanup
       return () => {
-        if (startupTimer) clearTimeout(startupTimer);
         resizeObserver.disconnect();
         Promise.all([unlistenOutput, unlistenStatus, unlistenExit]).then(
           (fns) => fns.forEach((fn) => fn())

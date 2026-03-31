@@ -1,20 +1,16 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { TitleBar } from "./components/layout/TitleBar";
 import { Sidebar } from "./components/layout/Sidebar";
 import { StatusBar } from "./components/layout/StatusBar";
 import { TerminalGrid } from "./components/terminal/TerminalGrid";
-import { SessionBrowser } from "./components/session/SessionBrowser";
 import { AddProjectModal } from "./components/project/AddProjectModal";
 import { useTerminals } from "./hooks/useTerminals";
-import { useSessions } from "./hooks/useSessions";
 import { useProjects } from "./hooks/useProjects";
 import { useNotifications } from "./hooks/useNotifications";
 import { useSounds } from "./hooks/useSounds";
 import { DEFAULT_COMMAND } from "./lib/constants";
 import type { Project } from "./types/project";
 import type { TerminalStatus } from "./types/terminal";
-
-type SidebarView = "projects" | "sessions";
 
 export function App() {
   const {
@@ -30,27 +26,11 @@ export function App() {
   const { projects, add: addProject, update: updateProject } =
     useProjects();
 
-  // Derive project paths from saved projects
-  const projectPaths = useMemo(
-    () => projects.map((p) => p.path),
-    [projects]
-  );
-
-  const {
-    sessions,
-    filterPath,
-    setFilterPath,
-    loading: sessionsLoading,
-    refresh: refreshSessions,
-  } = useSessions({ projectPaths });
-
   const { notify } = useNotifications();
   const { play } = useSounds();
 
-  const [sidebarView, setSidebarView] = useState<SidebarView>("projects");
   const [showAddProject, setShowAddProject] = useState(false);
   const [editProject, setEditProject] = useState<Project | null>(null);
-  const [showSessions, setShowSessions] = useState(false);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -112,12 +92,10 @@ export function App() {
     (id: string, status: TerminalStatus) => {
       updateStatus(id, status);
 
-      // Notify when Claude finishes (status changes to idle from responding)
       if (status === "idle") {
         const terminal = terminals.find((t) => t.id === id);
         if (terminal && terminal.status === "responding") {
           play("success");
-          // Only notify if window is not focused
           if (!document.hasFocus()) {
             notify(
               "Claude finished",
@@ -146,38 +124,21 @@ export function App() {
           projects={projects}
           onLaunchProject={handleLaunchProject}
           onAddProject={() => setShowAddProject(true)}
-          onShowSessions={refreshSessions}
           onNewTerminal={handleNewTerminal}
-          activeView={sidebarView}
-          onViewChange={(view) => {
-            setSidebarView(view);
-            setShowSessions(view === "sessions");
-          }}
+          onResumeSession={handleResumeSession}
         />
 
         <div className="flex-1 flex flex-col min-w-0">
-          {showSessions && sidebarView === "sessions" ? (
-            <SessionBrowser
-              sessions={sessions}
-              projectPaths={projectPaths}
-              filterPath={filterPath}
-              onFilterChange={setFilterPath}
-              onResume={handleResumeSession}
-              onRefresh={refreshSessions}
-              loading={sessionsLoading}
-            />
-          ) : (
-            <TerminalGrid
-              terminals={terminals}
-              activeId={activeId}
-              onSelect={setActiveId}
-              onClose={kill}
-              onRename={rename}
-              onStatusChange={handleStatusChange}
-              onExit={handleExit}
-              onNewTerminal={handleNewTerminal}
-            />
-          )}
+          <TerminalGrid
+            terminals={terminals}
+            activeId={activeId}
+            onSelect={setActiveId}
+            onClose={kill}
+            onRename={rename}
+            onStatusChange={handleStatusChange}
+            onExit={handleExit}
+            onNewTerminal={handleNewTerminal}
+          />
         </div>
       </div>
 
