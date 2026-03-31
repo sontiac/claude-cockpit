@@ -64,7 +64,37 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
       term.loadAddon(fitAddon);
 
       term.open(container);
-      fitAddon.fit();
+
+      // Scroll-safe fit: preserve the viewport scroll position across fit() calls.
+      // fit() can resize the terminal rows which resets the scroll position.
+      let lastCols = 0;
+      let lastRows = 0;
+      const safeFit = () => {
+        const dims = fitAddon.proposeDimensions();
+        if (!dims) return;
+
+        // Skip if dimensions haven't actually changed
+        if (dims.cols === lastCols && dims.rows === lastRows) return;
+
+        // Save scroll state: viewportY is the line offset from the top of the scrollback
+        const savedViewportY = term.buffer.active.viewportY;
+        const wasAtBottom =
+          savedViewportY >= term.buffer.active.baseY;
+
+        fitAddon.fit();
+        lastCols = dims.cols;
+        lastRows = dims.rows;
+
+        // Restore scroll: if user was at the bottom (following output), stay there.
+        // Otherwise, restore to where they were.
+        if (wasAtBottom) {
+          term.scrollToBottom();
+        } else {
+          term.scrollToLine(savedViewportY);
+        }
+      };
+
+      safeFit();
 
       // Try WebGL renderer
       try {
@@ -88,7 +118,6 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
       fitRef.current = fitAddon;
 
       // Listen for output from PTY
-      // Buffer for rename detection (accumulate text to match across chunks)
       let renameBuf = "";
       const unlistenOutput = onTerminalOutput(id, (data) => {
         const bytes = new Uint8Array(data);
@@ -98,11 +127,9 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
         if (onRenameDetected) {
           const text = new TextDecoder().decode(bytes);
           renameBuf += text;
-          // Keep buffer small — only last 200 chars
           if (renameBuf.length > 200) {
             renameBuf = renameBuf.slice(-200);
           }
-          // Strip ANSI escape codes for matching
           const clean = renameBuf.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
           const match = clean.match(/Session renamed to:\s*(.+)/);
           if (match) {
@@ -125,15 +152,17 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
         onExit?.(code);
       });
 
-      // Resize on container size changes
+      // Debounced resize observer — prevents spurious fit() on focus changes.
+      let resizeTimer: ReturnType<typeof setTimeout> | null = null;
       const resizeObserver = new ResizeObserver(() => {
-        fitAddon.fit();
+        if (resizeTimer) clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(safeFit, 50);
       });
       resizeObserver.observe(container);
 
       // Initial resize to tell PTY our actual size after layout settles
       setTimeout(() => {
-        fitAddon.fit();
+        safeFit();
         const dims = fitAddon.proposeDimensions();
         if (dims) {
           ptyResize(id, dims.cols, dims.rows).catch(console.error);
@@ -142,6 +171,7 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
 
       // Cleanup
       return () => {
+        if (resizeTimer) clearTimeout(resizeTimer);
         resizeObserver.disconnect();
         Promise.all([unlistenOutput, unlistenStatus, unlistenExit]).then(
           (fns) => fns.forEach((fn) => fn())
@@ -159,7 +189,18 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
   }, []);
 
   const fit = useCallback(() => {
-    fitRef.current?.fit();
+    // External fit calls also use scroll-safe approach
+    if (!termRef.current || !fitRef.current) return;
+    const term = termRef.current;
+    const fitAddon = fitRef.current;
+    const savedViewportY = term.buffer.active.viewportY;
+    const wasAtBottom = savedViewportY >= term.buffer.active.baseY;
+    fitAddon.fit();
+    if (wasAtBottom) {
+      term.scrollToBottom();
+    } else {
+      term.scrollToLine(savedViewportY);
+    }
   }, []);
 
   return { mount, focus, fit, termRef };
