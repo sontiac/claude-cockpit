@@ -74,11 +74,15 @@ pub fn get_sessions_from_db(limit: u32, project_path: Option<&str>) -> Vec<Sessi
     let rows = match stmt.query_map(param_refs.as_slice(), |row| {
         Ok(SessionInfo {
             session_id: row.get(0)?,
+            slug: None,
             first_message: row.get(1)?,
             last_message: row.get(2)?,
             message_count: row.get(3)?,
+            tool_call_count: 0,
             cwd: row.get::<_, String>(4).unwrap_or_default(),
             summary: row.get(5).ok(),
+            model: None,
+            git_branch: None,
         })
     }) {
         Ok(r) => r,

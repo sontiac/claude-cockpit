@@ -11,11 +11,15 @@ fn read_session_from_jsonl(file_path: &Path) -> Option<SessionInfo> {
     let metadata = fs::metadata(file_path).ok()?;
 
     let mut summary: Option<String> = None;
+    let mut slug: Option<String> = None;
+    let mut model: Option<String> = None;
+    let mut git_branch: Option<String> = None;
     let mut cwd = String::new();
     let mut session_id = String::new();
     let mut first_timestamp: f64 = 0.0;
     let mut last_timestamp: f64 = 0.0;
     let mut message_count: u32 = 0;
+    let mut tool_call_count: u32 = 0;
 
     for line in reader.lines() {
         let line = match line {
@@ -39,6 +43,20 @@ fn read_session_from_jsonl(file_path: &Path) -> Option<SessionInfo> {
             }
         }
 
+        // Get slug (human-readable session name like "glowing-jingling-gizmo")
+        if slug.is_none() {
+            if let Some(s) = data.get("slug").and_then(|s| s.as_str()) {
+                slug = Some(s.to_string());
+            }
+        }
+
+        // Get git branch
+        if git_branch.is_none() {
+            if let Some(b) = data.get("gitBranch").and_then(|b| b.as_str()) {
+                git_branch = Some(b.to_string());
+            }
+        }
+
         // Get session info from first message with sessionId + cwd
         if cwd.is_empty() {
             if let (Some(sid), Some(c)) = (
@@ -52,7 +70,6 @@ fn read_session_from_jsonl(file_path: &Path) -> Option<SessionInfo> {
 
         // Track timestamps
         if let Some(ts_str) = data.get("timestamp").and_then(|t| t.as_str()) {
-            // Parse ISO 8601 timestamp to epoch ms
             if let Ok(dt) = chrono_parse_timestamp(ts_str) {
                 if first_timestamp == 0.0 || dt < first_timestamp {
                     first_timestamp = dt;
@@ -63,9 +80,33 @@ fn read_session_from_jsonl(file_path: &Path) -> Option<SessionInfo> {
             }
         }
 
-        // Count messages
+        // Count messages and extract model
         match data.get("type").and_then(|t| t.as_str()) {
-            Some("user") | Some("assistant") => message_count += 1,
+            Some("user") | Some("assistant") => {
+                message_count += 1;
+                // Get model from assistant messages
+                if model.is_none() {
+                    if let Some(m) = data
+                        .get("message")
+                        .and_then(|msg| msg.get("model"))
+                        .and_then(|m| m.as_str())
+                    {
+                        model = Some(m.to_string());
+                    }
+                }
+                // Count tool uses in assistant content
+                if let Some(content) = data
+                    .get("message")
+                    .and_then(|msg| msg.get("content"))
+                    .and_then(|c| c.as_array())
+                {
+                    for item in content {
+                        if item.get("type").and_then(|t| t.as_str()) == Some("tool_use") {
+                            tool_call_count += 1;
+                        }
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -100,11 +141,15 @@ fn read_session_from_jsonl(file_path: &Path) -> Option<SessionInfo> {
 
     Some(SessionInfo {
         session_id,
+        slug,
         first_message: first_timestamp,
         last_message: last_timestamp,
         message_count,
+        tool_call_count,
         cwd,
         summary,
+        model,
+        git_branch,
     })
 }
 

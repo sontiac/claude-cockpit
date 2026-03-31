@@ -27,11 +27,15 @@ pub fn get_sessions(
         if let Some(existing) = session_map.get(&key) {
             let merged = SessionInfo {
                 session_id: session.session_id,
+                slug: session.slug.or(existing.slug.clone()),
                 first_message: session.first_message,
                 last_message: session.last_message,
                 message_count: session.message_count.max(existing.message_count),
+                tool_call_count: session.tool_call_count.max(existing.tool_call_count),
                 cwd: session.cwd,
                 summary: session.summary.or(existing.summary.clone()),
+                model: session.model.or(existing.model.clone()),
+                git_branch: session.git_branch.or(existing.git_branch.clone()),
             };
             session_map.insert(key, merged);
         } else {
