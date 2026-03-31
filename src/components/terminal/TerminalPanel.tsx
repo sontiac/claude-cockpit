@@ -4,7 +4,6 @@ import type { TerminalStatus } from "../../types/terminal";
 
 interface TerminalPanelProps {
   id: string;
-  active: boolean;
   onStatusChange: (status: TerminalStatus) => void;
   onExit: (code: number | null) => void;
   onRenameDetected?: (newName: string) => void;
@@ -12,14 +11,13 @@ interface TerminalPanelProps {
 
 export function TerminalPanel({
   id,
-  active,
   onStatusChange,
   onExit,
   onRenameDetected,
 }: TerminalPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mountedRef = useRef(false);
-  const { mount, focus, fit } = useTerminal({
+  const { mount } = useTerminal({
     id,
     onStatusChange,
     onExit,
@@ -33,18 +31,10 @@ export function TerminalPanel({
     }
   }, [mount]);
 
-  useEffect(() => {
-    if (active) {
-      focus();
-      fit();
-    }
-  }, [active, focus, fit]);
-
   return (
     <div
       ref={containerRef}
       className="terminal-container w-full h-full"
-      style={{ display: active ? "block" : "none" }}
     />
   );
 }

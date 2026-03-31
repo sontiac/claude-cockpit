@@ -110,7 +110,6 @@ export function TerminalCell({
       <div className="flex-1 min-h-0">
         <TerminalPanel
           id={terminal.id}
-          active={true}
           onStatusChange={onStatusChange}
           onExit={onExit}
           onRenameDetected={onRename}

@@ -18,6 +18,27 @@ interface UseTerminalOptions {
   onRenameDetected?: (newName: string) => void;
 }
 
+/**
+ * Calls fitAddon.fit() while preserving the xterm viewport's scroll position.
+ * Temporarily sets overflow to hidden so the browser can't adjust scrollTop
+ * during the resize, then immediately restores both overflow and scrollTop.
+ */
+function scrollSafeFit(fitAddon: FitAddon, container: HTMLElement) {
+  const viewport = container.querySelector(".xterm-viewport") as HTMLElement | null;
+  if (!viewport) {
+    fitAddon.fit();
+    return;
+  }
+
+  const scrollTop = viewport.scrollTop;
+  // Lock scroll during fit by hiding overflow
+  viewport.style.overflowY = "hidden";
+  fitAddon.fit();
+  // Restore immediately
+  viewport.scrollTop = scrollTop;
+  viewport.style.overflowY = "";
+}
+
 export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: UseTerminalOptions) {
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -25,7 +46,7 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
 
   const mount = useCallback(
     (container: HTMLDivElement) => {
-      if (termRef.current) return; // Already mounted
+      if (termRef.current) return;
 
       containerRef.current = container;
 
@@ -64,37 +85,7 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
       term.loadAddon(fitAddon);
 
       term.open(container);
-
-      // Scroll-safe fit: preserve the viewport scroll position across fit() calls.
-      // fit() can resize the terminal rows which resets the scroll position.
-      let lastCols = 0;
-      let lastRows = 0;
-      const safeFit = () => {
-        const dims = fitAddon.proposeDimensions();
-        if (!dims) return;
-
-        // Skip if dimensions haven't actually changed
-        if (dims.cols === lastCols && dims.rows === lastRows) return;
-
-        // Save scroll state: viewportY is the line offset from the top of the scrollback
-        const savedViewportY = term.buffer.active.viewportY;
-        const wasAtBottom =
-          savedViewportY >= term.buffer.active.baseY;
-
-        fitAddon.fit();
-        lastCols = dims.cols;
-        lastRows = dims.rows;
-
-        // Restore scroll: if user was at the bottom (following output), stay there.
-        // Otherwise, restore to where they were.
-        if (wasAtBottom) {
-          term.scrollToBottom();
-        } else {
-          term.scrollToLine(savedViewportY);
-        }
-      };
-
-      safeFit();
+      fitAddon.fit();
 
       // Try WebGL renderer
       try {
@@ -104,12 +95,10 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
         // WebGL not available, canvas fallback
       }
 
-      // Send input to PTY
       term.onData((data) => {
         ptyWrite(id, data).catch(console.error);
       });
 
-      // Handle resize
       term.onResize(({ cols, rows }) => {
         ptyResize(id, cols, rows).catch(console.error);
       });
@@ -123,7 +112,6 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
         const bytes = new Uint8Array(data);
         term.write(bytes);
 
-        // Detect Claude Code /rename output: "Session renamed to: <name>"
         if (onRenameDetected) {
           const text = new TextDecoder().decode(bytes);
           renameBuf += text;
@@ -142,37 +130,33 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
         }
       });
 
-      // Listen for status changes
       const unlistenStatus = onTerminalStatus(id, (status) => {
         onStatusChange?.(status as TerminalStatus);
       });
 
-      // Listen for exit
       const unlistenExit = onTerminalExit(id, (code) => {
         onExit?.(code);
       });
 
-      // Debounced resize observer — prevents spurious fit() on focus changes.
-      let resizeTimer: ReturnType<typeof setTimeout> | null = null;
-      const resizeObserver = new ResizeObserver(() => {
-        if (resizeTimer) clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(safeFit, 50);
-      });
-      resizeObserver.observe(container);
+      // Only refit on actual window resizes — NOT on grid layout changes,
+      // focus changes, or visibility changes. This is the only thing that
+      // should trigger a resize on already-mounted terminals.
+      const handleWindowResize = () => {
+        scrollSafeFit(fitAddon, container);
+      };
+      window.addEventListener("resize", handleWindowResize);
 
-      // Initial resize to tell PTY our actual size after layout settles
+      // Initial resize to tell PTY our actual size
       setTimeout(() => {
-        safeFit();
+        fitAddon.fit();
         const dims = fitAddon.proposeDimensions();
         if (dims) {
           ptyResize(id, dims.cols, dims.rows).catch(console.error);
         }
       }, 50);
 
-      // Cleanup
       return () => {
-        if (resizeTimer) clearTimeout(resizeTimer);
-        resizeObserver.disconnect();
+        window.removeEventListener("resize", handleWindowResize);
         Promise.all([unlistenOutput, unlistenStatus, unlistenExit]).then(
           (fns) => fns.forEach((fn) => fn())
         );
@@ -188,20 +172,12 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
     termRef.current?.focus();
   }, []);
 
-  const fit = useCallback(() => {
-    // External fit calls also use scroll-safe approach
-    if (!termRef.current || !fitRef.current) return;
-    const term = termRef.current;
-    const fitAddon = fitRef.current;
-    const savedViewportY = term.buffer.active.viewportY;
-    const wasAtBottom = savedViewportY >= term.buffer.active.baseY;
-    fitAddon.fit();
-    if (wasAtBottom) {
-      term.scrollToBottom();
-    } else {
-      term.scrollToLine(savedViewportY);
+  // Scroll-safe refit that can be called externally (e.g. after grid layout change)
+  const refit = useCallback(() => {
+    if (fitRef.current && containerRef.current) {
+      scrollSafeFit(fitRef.current, containerRef.current);
     }
   }, []);
 
-  return { mount, focus, fit, termRef };
+  return { mount, focus, refit, termRef };
 }
