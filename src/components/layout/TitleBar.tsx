@@ -8,14 +8,8 @@ export function TitleBar() {
 
   const handleMinimize = () => appWindow.minimize();
   const handleMaximize = async () => {
-    const maximized = await appWindow.isMaximized();
-    if (maximized) {
-      appWindow.unmaximize();
-      setIsMaximized(false);
-    } else {
-      appWindow.maximize();
-      setIsMaximized(true);
-    }
+    await appWindow.toggleMaximize();
+    setIsMaximized(await appWindow.isMaximized());
   };
   const handleClose = () => appWindow.close();
 

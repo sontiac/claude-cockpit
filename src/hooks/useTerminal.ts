@@ -15,9 +15,10 @@ interface UseTerminalOptions {
   id: string;
   onStatusChange?: (status: TerminalStatus) => void;
   onExit?: (code: number | null) => void;
+  onRenameDetected?: (newName: string) => void;
 }
 
-export function useTerminal({ id, onStatusChange, onExit }: UseTerminalOptions) {
+export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: UseTerminalOptions) {
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -87,9 +88,31 @@ export function useTerminal({ id, onStatusChange, onExit }: UseTerminalOptions) 
       fitRef.current = fitAddon;
 
       // Listen for output from PTY
+      // Buffer for rename detection (accumulate text to match across chunks)
+      let renameBuf = "";
       const unlistenOutput = onTerminalOutput(id, (data) => {
         const bytes = new Uint8Array(data);
         term.write(bytes);
+
+        // Detect Claude Code /rename output: "Session renamed to: <name>"
+        if (onRenameDetected) {
+          const text = new TextDecoder().decode(bytes);
+          renameBuf += text;
+          // Keep buffer small — only last 200 chars
+          if (renameBuf.length > 200) {
+            renameBuf = renameBuf.slice(-200);
+          }
+          // Strip ANSI escape codes for matching
+          const clean = renameBuf.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+          const match = clean.match(/Session renamed to:\s*(.+)/);
+          if (match) {
+            const newName = match[1].trim();
+            if (newName) {
+              onRenameDetected(newName);
+              renameBuf = "";
+            }
+          }
+        }
       });
 
       // Listen for status changes
@@ -128,7 +151,7 @@ export function useTerminal({ id, onStatusChange, onExit }: UseTerminalOptions) 
         fitRef.current = null;
       };
     },
-    [id, onStatusChange, onExit]
+    [id, onStatusChange, onExit, onRenameDetected]
   );
 
   const focus = useCallback(() => {

@@ -7,6 +7,7 @@ interface TerminalPanelProps {
   active: boolean;
   onStatusChange: (status: TerminalStatus) => void;
   onExit: (code: number | null) => void;
+  onRenameDetected?: (newName: string) => void;
 }
 
 export function TerminalPanel({
@@ -14,6 +15,7 @@ export function TerminalPanel({
   active,
   onStatusChange,
   onExit,
+  onRenameDetected,
 }: TerminalPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mountedRef = useRef(false);
@@ -21,6 +23,7 @@ export function TerminalPanel({
     id,
     onStatusChange,
     onExit,
+    onRenameDetected,
   });
 
   useEffect(() => {

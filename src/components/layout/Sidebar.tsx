@@ -18,7 +18,7 @@ interface SidebarProps {
   onLaunchProject: (project: Project) => void;
   onAddProject: () => void;
   onNewTerminal: () => void;
-  onResumeSession: (sessionId: string, cwd: string) => void;
+  onResumeSession: (sessionId: string, cwd: string, label: string) => void;
 }
 
 function formatModel(model: string | null): string {
@@ -43,7 +43,7 @@ function ProjectSection({
 }: {
   project: Project;
   onLaunch: () => void;
-  onResume: (sessionId: string, cwd: string) => void;
+  onResume: (sessionId: string, cwd: string, label: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -117,7 +117,13 @@ function ProjectSection({
             sessions.map((session) => (
               <button
                 key={session.session_id}
-                onClick={() => onResume(session.session_id, session.cwd)}
+                onClick={() => {
+                  const sessionTitle = getDisplayTitle(session);
+                  const label = session.custom_title
+                    ? `${project.name}: ${session.custom_title}`
+                    : `${project.name}: ${sessionTitle.slice(0, 40)}`;
+                  onResume(session.session_id, session.cwd, label);
+                }}
                 className="w-full text-left px-2 py-1.5 rounded-md hover:bg-white/5 group/session"
               >
                 <div className="text-xs text-foreground truncate leading-relaxed">

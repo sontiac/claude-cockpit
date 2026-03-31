@@ -11,6 +11,7 @@
     "core:window:allow-close",
     "core:window:allow-set-title",
     "core:window:allow-is-maximized",
+    "core:window:allow-toggle-maximize",
     "notification:default",
     "notification:allow-request-permission",
     "notification:allow-notify",

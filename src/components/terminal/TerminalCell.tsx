@@ -113,6 +113,7 @@ export function TerminalCell({
           active={true}
           onStatusChange={onStatusChange}
           onExit={onExit}
+          onRenameDetected={onRename}
         />
       </div>
     </div>
