@@ -1,0 +1,122 @@
+@import "tailwindcss";
+@import "@xterm/xterm/css/xterm.css";
+
+:root {
+  --background: #0f172a;
+  --background-secondary: #1e293b;
+  --foreground: #f1f5f9;
+  --foreground-muted: #94a3b8;
+  --accent-cyan: #06b6d4;
+  --accent-amber: #f59e0b;
+  --accent-violet: #8b5cf6;
+  --accent-emerald: #10b981;
+  --card-bg: rgba(30, 41, 59, 0.6);
+  --card-border: rgba(148, 163, 184, 0.1);
+  --card-hover: rgba(30, 41, 59, 0.8);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-background-secondary: var(--background-secondary);
+  --color-foreground: var(--foreground);
+  --color-foreground-muted: var(--foreground-muted);
+  --color-accent-cyan: var(--accent-cyan);
+  --color-accent-amber: var(--accent-amber);
+  --color-accent-violet: var(--accent-violet);
+  --color-accent-emerald: var(--accent-emerald);
+  --color-card-bg: var(--card-bg);
+  --color-card-border: var(--card-border);
+  --color-card-hover: var(--card-hover);
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+/* Glass morphism card */
+.glass-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  backdrop-filter: blur(12px);
+  border-radius: 16px;
+  transition: all 0.2s ease;
+}
+
+.glass-card:hover {
+  background: var(--card-hover);
+  border-color: rgba(148, 163, 184, 0.2);
+  transform: translateY(-2px);
+}
+
+/* Glow effects */
+.glow-cyan { box-shadow: 0 0 20px rgba(6, 182, 212, 0.3); }
+.glow-amber { box-shadow: 0 0 20px rgba(245, 158, 11, 0.3); }
+
+/* Button transitions */
+button {
+  transition: all 0.15s ease;
+}
+button:active {
+  transform: scale(0.97);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
+}
+
+/* Title bar drag region */
+.titlebar-drag {
+  -webkit-app-region: drag;
+}
+.titlebar-nodrag {
+  -webkit-app-region: no-drag;
+}
+
+/* Terminal container */
+.terminal-container .xterm {
+  padding: 8px;
+}
+.terminal-container .xterm-viewport::-webkit-scrollbar {
+  width: 6px;
+}
+.terminal-container .xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 3px;
+}
+
+/* Status dot animation */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.status-pulse {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Path text */
+.path-text {
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 0.75rem;
+  color: var(--foreground-muted);
+}
