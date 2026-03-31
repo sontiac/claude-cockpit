@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { TitleBar } from "./components/layout/TitleBar";
 import { Sidebar } from "./components/layout/Sidebar";
 import { StatusBar } from "./components/layout/StatusBar";
@@ -27,17 +27,22 @@ export function App() {
     updateStatus,
   } = useTerminals();
 
+  const { projects, add: addProject, update: updateProject } =
+    useProjects();
+
+  // Derive project paths from saved projects
+  const projectPaths = useMemo(
+    () => projects.map((p) => p.path),
+    [projects]
+  );
+
   const {
     sessions,
-    projectPaths,
     filterPath,
     setFilterPath,
     loading: sessionsLoading,
     refresh: refreshSessions,
-  } = useSessions();
-
-  const { projects, add: addProject, update: updateProject } =
-    useProjects();
+  } = useSessions({ projectPaths });
 
   const { notify } = useNotifications();
   const { play } = useSounds();

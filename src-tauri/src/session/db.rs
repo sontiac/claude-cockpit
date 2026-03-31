@@ -83,6 +83,8 @@ pub fn get_sessions_from_db(limit: u32, project_path: Option<&str>) -> Vec<Sessi
             summary: row.get(5).ok(),
             model: None,
             git_branch: None,
+            custom_title: None,
+            first_user_message: None,
         })
     }) {
         Ok(r) => r,

@@ -34,6 +34,7 @@ export function useTerminal({ id, onStatusChange, onExit }: UseTerminalOptions) 
         fontSize: 13,
         fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace',
         lineHeight: 1.2,
+        scrollback: 10000,
         theme: {
           background: "#0f172a",
           foreground: "#f1f5f9",
@@ -85,10 +86,25 @@ export function useTerminal({ id, onStatusChange, onExit }: UseTerminalOptions) 
       termRef.current = term;
       fitRef.current = fitAddon;
 
+      // Track whether this is the initial output burst (startup).
+      // After startup settles, scroll to top so user sees the beginning.
+      let startupTimer: ReturnType<typeof setTimeout> | null = null;
+      let startupDone = false;
+
       // Listen for output from PTY
       const unlistenOutput = onTerminalOutput(id, (data) => {
         const bytes = new Uint8Array(data);
         term.write(bytes);
+
+        // During startup, keep resetting a timer. Once output stops
+        // for 300ms we consider startup complete and scroll to top.
+        if (!startupDone) {
+          if (startupTimer) clearTimeout(startupTimer);
+          startupTimer = setTimeout(() => {
+            startupDone = true;
+            term.scrollToTop();
+          }, 300);
+        }
       });
 
       // Listen for status changes
@@ -118,6 +134,7 @@ export function useTerminal({ id, onStatusChange, onExit }: UseTerminalOptions) 
 
       // Cleanup
       return () => {
+        if (startupTimer) clearTimeout(startupTimer);
         resizeObserver.disconnect();
         Promise.all([unlistenOutput, unlistenStatus, unlistenExit]).then(
           (fns) => fns.forEach((fn) => fn())

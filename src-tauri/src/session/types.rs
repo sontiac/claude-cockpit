@@ -12,4 +12,6 @@ pub struct SessionInfo {
     pub summary: Option<String>,
     pub model: Option<String>,
     pub git_branch: Option<String>,
+    pub custom_title: Option<String>,
+    pub first_user_message: Option<String>,
 }

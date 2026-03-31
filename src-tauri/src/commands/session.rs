@@ -36,6 +36,8 @@ pub fn get_sessions(
                 summary: session.summary.or(existing.summary.clone()),
                 model: session.model.or(existing.model.clone()),
                 git_branch: session.git_branch.or(existing.git_branch.clone()),
+                custom_title: session.custom_title.or(existing.custom_title.clone()),
+                first_user_message: session.first_user_message.or(existing.first_user_message.clone()),
             };
             session_map.insert(key, merged);
         } else {

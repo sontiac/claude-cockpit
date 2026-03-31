@@ -15,8 +15,22 @@ function formatModel(model: string | null): string {
   return model;
 }
 
+/** Derive the display title the same way Claude Code does:
+ *  1. custom_title (from /rename) if set
+ *  2. first_user_message text (truncated) if available
+ *  3. slug as fallback
+ *  4. session_id prefix as last resort
+ */
+function getDisplayTitle(session: Session): string {
+  if (session.custom_title) return session.custom_title;
+  if (session.first_user_message) return session.first_user_message;
+  if (session.slug) return session.slug;
+  return session.session_id.slice(0, 8);
+}
+
 export function SessionCard({ session, onResume }: SessionCardProps) {
   const modelLabel = formatModel(session.model);
+  const title = getDisplayTitle(session);
 
   return (
     <button
@@ -25,22 +39,18 @@ export function SessionCard({ session, onResume }: SessionCardProps) {
     >
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
-          {/* Slug / session name */}
+          {/* Session title */}
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-foreground truncate">
-              {session.slug || session.session_id.slice(0, 8)}
+            <span
+              className="text-sm font-medium text-foreground truncate flex-1"
+              title={title}
+            >
+              {title}
             </span>
             <span className="text-xs text-foreground-muted flex-shrink-0">
               {formatRelativeTime(session.last_message)}
             </span>
           </div>
-
-          {/* Summary */}
-          {session.summary && (
-            <p className="text-xs text-foreground-muted mt-1 line-clamp-2 leading-relaxed">
-              {session.summary}
-            </p>
-          )}
 
           {/* Metadata row */}
           <div className="flex items-center gap-3 mt-1.5 text-xs text-foreground-muted">

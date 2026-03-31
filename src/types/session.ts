@@ -9,4 +9,6 @@ export interface Session {
   summary: string | null;
   model: string | null;
   git_branch: string | null;
+  custom_title: string | null;
+  first_user_message: string | null;
 }
