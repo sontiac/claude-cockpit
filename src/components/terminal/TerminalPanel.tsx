@@ -16,7 +16,6 @@ export function TerminalPanel({
   onRenameDetected,
 }: TerminalPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mountedRef = useRef(false);
   const { mount } = useTerminal({
     id,
     onStatusChange,
@@ -24,11 +23,13 @@ export function TerminalPanel({
     onRenameDetected,
   });
 
+  // `mount` is stable per terminal id, so this runs once on mount and the
+  // returned cleanup runs on unmount — disposing the xterm instance, its PTY
+  // output/status/exit listeners, the ResizeObserver, and the WebGL addon.
   useEffect(() => {
-    if (containerRef.current && !mountedRef.current) {
-      mountedRef.current = true;
-      mount(containerRef.current);
-    }
+    const container = containerRef.current;
+    if (!container) return;
+    return mount(container);
   }, [mount]);
 
   return (

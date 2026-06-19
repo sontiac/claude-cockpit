@@ -95,6 +95,15 @@ const FIRST_CONTEXT_SETTLE_MS = 1000;
 export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: UseTerminalOptions) {
   const termRef = useRef<Terminal | null>(null);
 
+  // Keep the latest callbacks in a ref so `mount` can depend only on `id` and
+  // stay referentially stable. Parents pass fresh inline callbacks on every
+  // render (e.g. TerminalGrid's `(status) => onStatusChange(terminal.id, ...)`),
+  // so a `mount` that closed over them directly would change identity each
+  // render and tear down + recreate the terminal. Reading through the ref means
+  // the live terminal always invokes the current callbacks without remounting.
+  const callbacksRef = useRef({ onStatusChange, onExit, onRenameDetected });
+  callbacksRef.current = { onStatusChange, onExit, onRenameDetected };
+
   const mount = useCallback(
     (container: HTMLDivElement) => {
       if (termRef.current) return;
@@ -201,7 +210,7 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
         const bytes = new Uint8Array(data);
         term.write(bytes);
 
-        if (onRenameDetected) {
+        if (callbacksRef.current.onRenameDetected) {
           const text = new TextDecoder().decode(bytes);
           renameBuf += text;
           if (renameBuf.length > 200) {
@@ -212,7 +221,7 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
           if (match) {
             const newName = match[1].trim();
             if (newName) {
-              onRenameDetected(newName);
+              callbacksRef.current.onRenameDetected(newName);
               renameBuf = "";
             }
           }
@@ -220,11 +229,11 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
       });
 
       const unlistenStatus = onTerminalStatus(id, (status) => {
-        onStatusChange?.(status as TerminalStatus);
+        callbacksRef.current.onStatusChange?.(status as TerminalStatus);
       });
 
       const unlistenExit = onTerminalExit(id, (code) => {
-        onExit?.(code);
+        callbacksRef.current.onExit?.(code);
       });
 
       // Refit whenever the container's actual size changes — this covers
@@ -266,7 +275,7 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
         termRef.current = null;
       };
     },
-    [id, onStatusChange, onExit, onRenameDetected]
+    [id]
   );
 
   const focus = useCallback(() => {
