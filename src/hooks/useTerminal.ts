@@ -39,16 +39,65 @@ function scrollSafeFit(fitAddon: FitAddon, container: HTMLElement) {
   viewport.style.overflowY = "";
 }
 
+/**
+ * Probes whether a WebGL2 rendering context can be created right now. During
+ * app/webview cold boot the WKWebView GPU process may not be ready yet, so
+ * getContext('webgl2') returns null until it is. The probe context is released
+ * immediately so it never holds onto a context slot.
+ */
+function webgl2Available(): boolean {
+  const canvas = document.createElement("canvas");
+  const gl = canvas.getContext("webgl2");
+  if (!gl) return false;
+  gl.getExtension("WEBGL_lose_context")?.loseContext();
+  return true;
+}
+
+/**
+ * Creates a WebglAddon, wires context-loss handling (dispose → revert to DOM
+ * rather than freeze), and loads it into the terminal. Returns the addon, or
+ * null if activation threw (caller falls back to the DOM renderer).
+ */
+function loadWebglAddon(term: Terminal, id: string): WebglAddon | null {
+  try {
+    const addon = new WebglAddon();
+    addon.onContextLoss(() => {
+      console.warn(`[cockpit][${id}] WebGL context lost — reverting to DOM renderer`);
+      addon.dispose();
+    });
+    term.loadAddon(addon);
+    return addon;
+  } catch (err) {
+    console.warn(`[cockpit][${id}] WebGL addon load failed; using DOM renderer:`, err);
+    return null;
+  }
+}
+
+/**
+ * The first WebGL context created in a freshly-launched WKWebView lands on a
+ * degraded compositing path — scroll is janky despite WebGL being active and
+ * correctly sized. Reopening the terminal (a fresh context, created after the
+ * webview has settled) is the known cure. We reproduce that cure automatically
+ * for the first terminal mounted in each app session.
+ */
+let firstTerminalMountedThisSession = false;
+
+/**
+ * How long to wait after the first terminal mounts before recreating its WebGL
+ * context. The recreated context must be created *after* the webview has
+ * finished its initial compositing, otherwise it inherits the same slow path.
+ * Empirically the webview is settled well within this window; the only cost of
+ * being generous is that the first terminal scrolls on its original (possibly
+ * janky) context for this brief interval before going smooth.
+ */
+const FIRST_CONTEXT_SETTLE_MS = 1000;
+
 export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: UseTerminalOptions) {
   const termRef = useRef<Terminal | null>(null);
-  const fitRef = useRef<FitAddon | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
 
   const mount = useCallback(
     (container: HTMLDivElement) => {
       if (termRef.current) return;
-
-      containerRef.current = container;
 
       const term = new Terminal({
         cursorBlink: true,
@@ -87,13 +136,54 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
       term.open(container);
       fitAddon.fit();
 
-      // Try WebGL renderer
-      try {
-        const webglAddon = new WebglAddon();
-        term.loadAddon(webglAddon);
-      } catch {
-        // WebGL not available, canvas fallback
-      }
+      // Attach xterm's WebGL renderer. Two cold-boot problems are handled here:
+      //
+      //   1. Genuine fallback — at cold boot getContext('webgl2') can briefly
+      //      return null; xterm throws inside loadAddon and silently drops to the
+      //      slow DOM renderer. We probe for a live context across a bounded
+      //      number of frames before giving up. Probing first (vs catching a
+      //      failed loadAddon) matters: xterm registers an addon *before* calling
+      //      activate(), so a throwing activate() leaks a dead addon entry.
+      //
+      //   2. Degraded first context — even when WebGL loads fine, the *first*
+      //      WebGL context in a freshly-launched webview lands on a slow
+      //      compositing path (janky scroll) despite being active and correctly
+      //      sized. Reopening the terminal is the known cure, so we recreate the
+      //      first terminal's context once after the webview settles.
+      let disposed = false;
+      let webglRaf = 0;
+      let settleTimer = 0;
+      let webglAddon: WebglAddon | null = null;
+      const MAX_WEBGL_FRAMES = 60; // ~1s at 60fps — ample headroom for cold boot
+      let webglFrames = 0;
+      const attachWebgl = () => {
+        webglRaf = 0;
+        if (disposed) return; // terminal torn down before the GPU was ready
+        if (!webgl2Available()) {
+          if (++webglFrames >= MAX_WEBGL_FRAMES) {
+            console.warn(`[cockpit][${id}] WebGL2 unavailable after ${webglFrames} frames; using DOM renderer`);
+            return;
+          }
+          webglRaf = requestAnimationFrame(attachWebgl);
+          return;
+        }
+
+        webglAddon = loadWebglAddon(term, id);
+
+        // Recreate the first terminal's context once after the webview settles
+        // (see note 2 above). Only the first terminal per session is affected;
+        // the swap is a single brief renderer flip and preserves screen content.
+        if (webglAddon && !firstTerminalMountedThisSession) {
+          firstTerminalMountedThisSession = true;
+          settleTimer = window.setTimeout(() => {
+            settleTimer = 0;
+            if (disposed || !webglAddon) return;
+            webglAddon.dispose();
+            webglAddon = loadWebglAddon(term, id);
+          }, FIRST_CONTEXT_SETTLE_MS);
+        }
+      };
+      attachWebgl();
 
       term.onData((data) => {
         ptyWrite(id, data).catch(console.error);
@@ -104,7 +194,6 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
       });
 
       termRef.current = term;
-      fitRef.current = fitAddon;
 
       // Listen for output from PTY
       let renameBuf = "";
@@ -138,31 +227,43 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
         onExit?.(code);
       });
 
-      // Only refit on actual window resizes — NOT on grid layout changes,
-      // focus changes, or visibility changes. This is the only thing that
-      // should trigger a resize on already-mounted terminals.
-      const handleWindowResize = () => {
+      // Refit whenever the container's actual size changes — this covers
+      // window resizes, grid layout switches (1→2→3→4), pane drags, and
+      // sidebar toggles alike. Observing the element directly (instead of the
+      // window 'resize' event) is what makes layout changes resize correctly,
+      // since changing the grid template doesn't fire a window resize.
+      // rAF-batched to coalesce bursts and avoid ResizeObserver loop errors.
+      let rafId = 0;
+      const applyFit = () => {
+        rafId = 0;
+        // Skip while the container is collapsed/hidden — fitting at 0px yields
+        // 0 cols and corrupts the terminal (the zero-width-terminal bug).
+        if (container.clientWidth === 0 || container.clientHeight === 0) return;
         scrollSafeFit(fitAddon, container);
-      };
-      window.addEventListener("resize", handleWindowResize);
-
-      // Initial resize to tell PTY our actual size
-      setTimeout(() => {
-        fitAddon.fit();
         const dims = fitAddon.proposeDimensions();
-        if (dims) {
+        if (dims && dims.cols > 0 && dims.rows > 0) {
           ptyResize(id, dims.cols, dims.rows).catch(console.error);
         }
-      }, 50);
+      };
+      const scheduleFit = () => {
+        if (rafId === 0) rafId = requestAnimationFrame(applyFit);
+      };
+      // Fires once on observe() with the initial size, which also handles the
+      // first PTY size sync.
+      const resizeObserver = new ResizeObserver(scheduleFit);
+      resizeObserver.observe(container);
 
       return () => {
-        window.removeEventListener("resize", handleWindowResize);
+        disposed = true;
+        if (webglRaf !== 0) cancelAnimationFrame(webglRaf);
+        if (settleTimer !== 0) clearTimeout(settleTimer);
+        if (rafId !== 0) cancelAnimationFrame(rafId);
+        resizeObserver.disconnect();
         Promise.all([unlistenOutput, unlistenStatus, unlistenExit]).then(
           (fns) => fns.forEach((fn) => fn())
         );
         term.dispose();
         termRef.current = null;
-        fitRef.current = null;
       };
     },
     [id, onStatusChange, onExit, onRenameDetected]
@@ -172,12 +273,5 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
     termRef.current?.focus();
   }, []);
 
-  // Scroll-safe refit that can be called externally (e.g. after grid layout change)
-  const refit = useCallback(() => {
-    if (fitRef.current && containerRef.current) {
-      scrollSafeFit(fitRef.current, containerRef.current);
-    }
-  }, []);
-
-  return { mount, focus, refit, termRef };
+  return { mount, focus, termRef };
 }
