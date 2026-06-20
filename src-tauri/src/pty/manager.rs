@@ -1,4 +1,4 @@
-use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
@@ -29,6 +29,18 @@ pub struct PtyHandle {
     pub info: TerminalInfo,
     master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    killer: Box<dyn ChildKiller + Send + Sync>,
+}
+
+impl Drop for PtyHandle {
+    fn drop(&mut self) {
+        // Closing the PTY only sends the child a hangup, which Claude ignores —
+        // so without an explicit kill the child process leaks and multiple
+        // instances end up resuming the same session (which then refuses to
+        // persist). Killing here ensures `pty_kill` and app shutdown actually
+        // terminate the child.
+        let _ = self.killer.kill();
+    }
 }
 
 impl PtyHandle {
@@ -71,26 +83,27 @@ impl PtyHandle {
 
         cmd.cwd(&cwd);
 
-        // Inherit common env vars
+        // Inherit the full parent environment. portable-pty's CommandBuilder
+        // does an env_clear() before spawning and passes only the vars set here,
+        // so without this the child runs with a near-empty environment — which
+        // silently breaks tools that depend on it (Claude's /rename persistence
+        // is one symptom). A terminal emulator must hand the child the same
+        // environment a normal shell would.
+        for (key, value) in std::env::vars() {
+            cmd.env(key, value);
+        }
+        // Terminal-specific overrides applied on top of the inherited env.
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
-        if let Ok(home) = std::env::var("HOME") {
-            cmd.env("HOME", &home);
-        }
-        if let Ok(path) = std::env::var("PATH") {
-            cmd.env("PATH", &path);
-        }
-        if let Ok(user) = std::env::var("USER") {
-            cmd.env("USER", &user);
-        }
-        if let Ok(lang) = std::env::var("LANG") {
-            cmd.env("LANG", &lang);
-        }
 
         let mut child = pair
             .slave
             .spawn_command(cmd)
             .map_err(|e| crate::error::CockpitError::Pty(e.to_string()))?;
+
+        // Grab a killer handle before the child is moved into the wait thread,
+        // so the PtyHandle can terminate the child on drop.
+        let killer = child.clone_killer();
 
         let writer = pair
             .master
@@ -215,6 +228,7 @@ impl PtyHandle {
             info,
             master,
             writer,
+            killer,
         })
     }
 
