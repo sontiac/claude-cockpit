@@ -10,6 +10,22 @@ use state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Claude Code marks the processes it spawns with these env vars. If cockpit
+    // was itself launched from within a Claude Code session, they're inherited
+    // and then passed to the Claude instances cockpit spawns — making those run
+    // as nested *child* sessions (CLAUDE_CODE_CHILD_SESSION=1) that never persist
+    // their conversation to disk. Clearing them from our own environment up front
+    // (before any PTY is spawned, while still single-threaded) guarantees every
+    // terminal is a clean top-level session, regardless of how the child inherits
+    // the environment. A normal launch wouldn't carry these either.
+    let claude_session_vars: Vec<String> = std::env::vars()
+        .map(|(k, _)| k)
+        .filter(|k| k == "CLAUDECODE" || k == "CLAUDE_EFFORT" || k.starts_with("CLAUDE_CODE_"))
+        .collect();
+    for key in claude_session_vars {
+        std::env::remove_var(key);
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_store::Builder::default().build())

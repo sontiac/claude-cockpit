@@ -86,10 +86,22 @@ impl PtyHandle {
         // Inherit the full parent environment. portable-pty's CommandBuilder
         // does an env_clear() before spawning and passes only the vars set here,
         // so without this the child runs with a near-empty environment — which
-        // silently breaks tools that depend on it (Claude's /rename persistence
-        // is one symptom). A terminal emulator must hand the child the same
-        // environment a normal shell would.
+        // silently breaks tools that depend on it. A terminal emulator must hand
+        // the child the same environment a normal shell would.
+        //
+        // Exception: Claude Code's own session markers. If cockpit was itself
+        // launched from within a Claude Code session, these leak in and tell the
+        // Claude instances cockpit spawns that they are *nested child sessions*
+        // (CLAUDE_CODE_CHILD_SESSION=1), so they don't persist their own
+        // conversation. Cockpit spawns fresh top-level sessions, so strip them —
+        // a normal terminal launch wouldn't carry them either.
         for (key, value) in std::env::vars() {
+            if key == "CLAUDECODE"
+                || key == "CLAUDE_EFFORT"
+                || key.starts_with("CLAUDE_CODE_")
+            {
+                continue;
+            }
             cmd.env(key, value);
         }
         // Terminal-specific overrides applied on top of the inherited env.
