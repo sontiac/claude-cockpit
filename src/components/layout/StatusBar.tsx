@@ -1,5 +1,6 @@
 import { Terminal, Minus, Plus } from "lucide-react";
 import type { TerminalInfo } from "../../types/terminal";
+import { PlayerHud } from "../player/PlayerHud";
 
 interface StatusBarProps {
   terminals: TerminalInfo[];
@@ -33,8 +34,13 @@ export function StatusBar({
         )}
       </div>
 
+      {/* Character HUD — level, class, XP */}
+      <div className="mx-auto">
+        <PlayerHud />
+      </div>
+
       {/* Font zoom — keyboard equivalents are Cmd/Ctrl +/-/0 */}
-      <div className="ml-auto flex items-center gap-0.5">
+      <div className="flex items-center gap-0.5">
         <button
           onClick={onDecreaseFont}
           className="p-0.5 rounded hover:bg-white/10 hover:text-foreground"

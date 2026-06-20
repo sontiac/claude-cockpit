@@ -1,4 +1,4 @@
-export type SoundName = "click" | "launch" | "success";
+export type SoundName = "click" | "launch" | "success" | "levelup" | "ding";
 
 let audioContext: AudioContext | null = null;
 
@@ -14,6 +14,12 @@ const soundConfigs: Record<SoundName, () => void> = {
     playTone({ frequency: 600, duration: 0.05, type: "sine", volume: 0.15 }),
   launch: () => playWhoosh(),
   success: () => playChime(),
+  levelup: () => playFanfare(),
+  // Soft, brief two-note rise for an ordinary level-up — pleasant at 4×/day.
+  ding: () => {
+    playTone({ frequency: 784, duration: 0.07, type: "sine", volume: 0.08 });
+    playTone({ frequency: 1046.5, duration: 0.07, type: "sine", volume: 0.07 });
+  },
 };
 
 function playTone(config: {
@@ -102,6 +108,35 @@ function playChime() {
     const startTime = ctx.currentTime + i * 0.08;
     gainNode.gain.setValueAtTime(0, startTime);
     gainNode.gain.linearRampToValueAtTime(0.12, startTime + 0.01);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
+
+    oscillator.start(startTime);
+    oscillator.stop(startTime + duration);
+  });
+}
+
+function playFanfare() {
+  const ctx = initAudio();
+  if (ctx.state === "suspended") ctx.resume();
+
+  // Ascending major arpeggio capped with an octave — a short triumphant rise.
+  const notes = [523.25, 659.25, 783.99, 1046.5]; // C5 E5 G5 C6
+  const step = 0.09;
+  const duration = 0.22;
+
+  notes.forEach((freq, i) => {
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+
+    oscillator.type = "triangle";
+    oscillator.frequency.setValueAtTime(freq, ctx.currentTime);
+
+    const startTime = ctx.currentTime + i * step;
+    gainNode.gain.setValueAtTime(0, startTime);
+    gainNode.gain.linearRampToValueAtTime(0.16, startTime + 0.01);
     gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
 
     oscillator.connect(gainNode);

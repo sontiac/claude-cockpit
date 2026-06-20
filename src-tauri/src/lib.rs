@@ -4,6 +4,7 @@ pub mod project;
 pub mod pty;
 pub mod session;
 pub mod state;
+pub mod stats;
 pub mod workspace;
 
 use state::AppState;
@@ -46,6 +47,7 @@ pub fn run() {
             commands::workspace::get_workspace,
             commands::workspace::save_workspace,
             commands::workspace::set_session_title,
+            commands::stats::get_player_stats,
             commands::system::browse_directory,
             commands::system::get_home_dir,
         ])

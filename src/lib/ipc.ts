@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { TerminalInfo, PersistedTerminal } from "../types/terminal";
 import type { Session } from "../types/session";
 import type { Project } from "../types/project";
+import type { PlayerStats } from "./player";
 
 // Terminal commands
 export const ptySpawn = (params: {
@@ -40,6 +41,9 @@ export const getSessions = (limit?: number, projectPath?: string) =>
   });
 
 export const getProjectPaths = () => invoke<string[]>("get_project_paths");
+
+// Player stats (gamification) — lifetime aggregates across all sessions
+export const getPlayerStats = () => invoke<PlayerStats>("get_player_stats");
 
 // Project commands
 export const getProjects = () => invoke<Project[]>("get_projects");
