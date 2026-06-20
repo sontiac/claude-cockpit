@@ -21,6 +21,14 @@ interface SidebarProps {
   onResumeSession: (sessionId: string, cwd: string, label: string) => void;
 }
 
+// While a project is expanded, re-read its sessions on this interval so newly
+// created sessions, growing message counts, and renames appear without the user
+// having to collapse and re-expand. Sessions are .jsonl files on disk that a
+// fresh terminal only writes *after* its first message, so a refresh fired on
+// terminal spawn would run before the file exists — polling is what reliably
+// catches it. Only expanded sections poll, so the cost stays bounded.
+const SESSION_POLL_MS = 2500;
+
 function formatModel(model: string | null): string {
   if (!model) return "";
   if (model.includes("opus")) return "Op";
@@ -49,10 +57,7 @@ function ProjectSection({
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Refetch on every expand so renamed sessions (custom_title changes Claude
-  // writes to the .jsonl) show their current names instead of a stale cache.
   const loadSessions = useCallback(async () => {
-    setLoading(true);
     try {
       const data = await getSessions(20, project.path);
       setSessions(data);
@@ -63,8 +68,16 @@ function ProjectSection({
     }
   }, [project.path, project.name]);
 
+  // While expanded, load once immediately and then poll. Polling keeps the list
+  // live as sessions are created, renamed, or accumulate messages — none of
+  // which is observable from a one-shot fetch on expand. The interval is torn
+  // down on collapse/unmount so collapsed sections do no work.
   useEffect(() => {
-    if (expanded) loadSessions();
+    if (!expanded) return;
+    setLoading(true);
+    loadSessions();
+    const interval = setInterval(loadSessions, SESSION_POLL_MS);
+    return () => clearInterval(interval);
   }, [expanded, loadSessions]);
 
   return (
