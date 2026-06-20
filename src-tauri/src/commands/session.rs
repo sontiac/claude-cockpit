@@ -49,6 +49,15 @@ pub fn get_sessions(
     result.sort_by(|a, b| b.last_message.partial_cmp(&a.last_message).unwrap());
     result.truncate(limit as usize);
 
+    // Overlay cockpit's own session-title overrides (a /rename done inside
+    // cockpit). These take precedence over any on-disk title.
+    let overrides = crate::workspace::store::get_session_titles();
+    for s in result.iter_mut() {
+        if let Some(title) = overrides.get(&s.session_id) {
+            s.custom_title = Some(title.clone());
+        }
+    }
+
     Ok(result)
 }
 

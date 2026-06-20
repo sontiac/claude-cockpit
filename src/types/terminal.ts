@@ -9,3 +9,12 @@ export interface TerminalInfo {
   command: string;
   project_id: string | null;
 }
+
+/** A persisted snapshot of an open terminal, used to restore it on next launch. */
+export interface PersistedTerminal {
+  cwd: string;
+  label: string;
+  color: string;
+  command: string;
+  project_id: string | null;
+}

@@ -4,6 +4,7 @@ pub mod project;
 pub mod pty;
 pub mod session;
 pub mod state;
+pub mod workspace;
 
 use state::AppState;
 
@@ -26,6 +27,9 @@ pub fn run() {
             commands::project::add_project,
             commands::project::update_project,
             commands::project::delete_project,
+            commands::workspace::get_workspace,
+            commands::workspace::save_workspace,
+            commands::workspace::set_session_title,
             commands::system::browse_directory,
             commands::system::get_home_dir,
         ])

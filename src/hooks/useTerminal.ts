@@ -92,6 +92,17 @@ let firstTerminalMountedThisSession = false;
  */
 const FIRST_CONTEXT_SETTLE_MS = 1000;
 
+/**
+ * Extracts the session name from a terminal title set by Claude. Claude prefixes
+ * the title with a status glyph — a braille spinner while working (U+2800–28FF)
+ * or a sparkle when idle (✳ ✶ ✻ ✽, in the dingbats/symbols blocks) — followed by
+ * a space. We strip any leading run of those glyphs, asterisks, and whitespace
+ * so the returned name changes only when the actual session name does.
+ */
+function sessionNameFromTitle(title: string): string {
+  return title.replace(/^[\s*☀-➿⠀-⣿️]+/, "").trim();
+}
+
 export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: UseTerminalOptions) {
   const termRef = useRef<Terminal | null>(null);
 
@@ -202,29 +213,38 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
         ptyResize(id, cols, rows).catch(console.error);
       });
 
+      // Track the current session name from the terminal title. Claude sets the
+      // title to "<status glyph> <session name>", so stripping the glyph gives a
+      // clean name. We only *read* it here — the title alone can't tell a manual
+      // /rename from Claude's auto-generated title updates, so we don't act on it
+      // directly (that would make the tab churn and overwrite a real rename).
+      let lastTitleName = "";
+      term.onTitleChange((title) => {
+        lastTitleName = sessionNameFromTitle(title);
+      });
+
       termRef.current = term;
 
-      // Listen for output from PTY
-      let renameBuf = "";
+      // Listen for output from PTY. We also watch the stream for Claude's
+      // "Session renamed to:" confirmation — the one reliable signal that the
+      // user actually ran /rename (vs an automatic title update). Claude paints
+      // that line with cursor positioning, so the spaces are gone in the bytes
+      // ("Sessionrenamedto:"); the regex tolerates that. On a real rename we
+      // take the clean name from the title (read on the next frame, after xterm
+      // has processed the title escape) and report it once.
+      let outBuf = "";
       const unlistenOutput = onTerminalOutput(id, (data) => {
         const bytes = new Uint8Array(data);
         term.write(bytes);
 
-        if (callbacksRef.current.onRenameDetected) {
-          const text = new TextDecoder().decode(bytes);
-          renameBuf += text;
-          if (renameBuf.length > 200) {
-            renameBuf = renameBuf.slice(-200);
-          }
-          const clean = renameBuf.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
-          const match = clean.match(/Session renamed to:\s*(.+)/);
-          if (match) {
-            const newName = match[1].trim();
-            if (newName) {
-              callbacksRef.current.onRenameDetected(newName);
-              renameBuf = "";
-            }
-          }
+        outBuf = (outBuf + new TextDecoder().decode(bytes)).slice(-400);
+        const clean = outBuf.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+        if (/session\s*renamed\s*to:/i.test(clean)) {
+          outBuf = "";
+          requestAnimationFrame(() => {
+            if (disposed) return;
+            if (lastTitleName) callbacksRef.current.onRenameDetected?.(lastTitleName);
+          });
         }
       });
 

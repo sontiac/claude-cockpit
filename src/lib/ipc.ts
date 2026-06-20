@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { TerminalInfo } from "../types/terminal";
+import type { TerminalInfo, PersistedTerminal } from "../types/terminal";
 import type { Session } from "../types/session";
 import type { Project } from "../types/project";
 
@@ -52,6 +52,16 @@ export const updateProject = (project: Project) =>
 
 export const deleteProject = (id: string) =>
   invoke<Project[]>("delete_project", { id });
+
+// Workspace (open-terminal) persistence
+export const getWorkspace = () =>
+  invoke<PersistedTerminal[]>("get_workspace");
+
+export const saveWorkspace = (terminals: PersistedTerminal[]) =>
+  invoke<void>("save_workspace", { terminals });
+
+export const setSessionTitle = (sessionId: string, title: string) =>
+  invoke<void>("set_session_title", { sessionId, title });
 
 // System commands
 export interface BrowseResult {

@@ -3,11 +3,14 @@ import { TitleBar } from "./components/layout/TitleBar";
 import { Sidebar } from "./components/layout/Sidebar";
 import { StatusBar } from "./components/layout/StatusBar";
 import { TerminalGrid } from "./components/terminal/TerminalGrid";
+import { RestoreModal } from "./components/terminal/RestoreModal";
 import { AddProjectModal } from "./components/project/AddProjectModal";
 import { useTerminals } from "./hooks/useTerminals";
 import { useProjects } from "./hooks/useProjects";
 import { useNotifications } from "./hooks/useNotifications";
 import { useSounds } from "./hooks/useSounds";
+import { setSessionTitle } from "./lib/ipc";
+import { sessionIdFromCommand } from "./lib/restore";
 import { DEFAULT_COMMAND } from "./lib/constants";
 import type { Project } from "./types/project";
 import type { TerminalStatus } from "./types/terminal";
@@ -21,6 +24,9 @@ export function App() {
     kill,
     rename,
     updateStatus,
+    restorable,
+    restore,
+    dismissRestore,
   } = useTerminals();
 
   const { projects, add: addProject, update: updateProject } =
@@ -88,6 +94,31 @@ export function App() {
     [spawn, play]
   );
 
+  // Claude reports the session name via the terminal title. Always keep the
+  // project (or folder) name as the prefix: "<project> : <session name>".
+  const handleSessionRename = useCallback(
+    (id: string, sessionName: string) => {
+      const terminal = terminals.find((t) => t.id === id);
+      const project = terminal?.project_id
+        ? projects.find((p) => p.id === terminal.project_id)
+        : undefined;
+      const prefix =
+        project?.name || terminal?.cwd.split("/").filter(Boolean).pop() || "";
+      rename(id, prefix ? `${prefix} : ${sessionName}` : sessionName);
+
+      // Record the rename against the terminal's session so it sticks in the
+      // sidebar and survives restarts (Claude doesn't persist /rename to disk
+      // when run inside cockpit's PTY).
+      const sessionId = terminal && sessionIdFromCommand(terminal.command);
+      if (sessionId) {
+        setSessionTitle(sessionId, sessionName).catch((e) =>
+          console.error("Failed to save session title:", e)
+        );
+      }
+    },
+    [terminals, projects, rename]
+  );
+
   const handleStatusChange = useCallback(
     (id: string, status: TerminalStatus) => {
       updateStatus(id, status);
@@ -135,6 +166,7 @@ export function App() {
             onSelect={setActiveId}
             onClose={kill}
             onRename={rename}
+            onSessionRename={handleSessionRename}
             onStatusChange={handleStatusChange}
             onExit={handleExit}
             onNewTerminal={handleNewTerminal}
@@ -159,6 +191,12 @@ export function App() {
           play("success");
         }}
         editProject={editProject}
+      />
+
+      <RestoreModal
+        terminals={restorable}
+        onRestore={restore}
+        onDismiss={dismissRestore}
       />
     </div>
   );

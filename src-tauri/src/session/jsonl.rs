@@ -24,6 +24,7 @@ fn read_session_from_jsonl(file_path: &Path) -> Option<SessionInfo> {
     let mut git_branch: Option<String> = None;
     let mut summary: Option<String> = None;
     let mut custom_title: Option<String> = None;
+    let mut ai_title: Option<String> = None;
     let mut first_user_message: Option<String> = None;
     let mut first_timestamp: f64 = 0.0;
     let mut last_timestamp: f64 = 0.0;
@@ -48,7 +49,7 @@ fn read_session_from_jsonl(file_path: &Path) -> Option<SessionInfo> {
         lines_read += 1;
         process_jsonl_line(
             trimmed, &mut session_id, &mut cwd, &mut slug, &mut model,
-            &mut git_branch, &mut summary, &mut custom_title,
+            &mut git_branch, &mut summary, &mut custom_title, &mut ai_title,
             &mut first_user_message, &mut first_timestamp,
             &mut last_timestamp, &mut message_count, &mut tool_call_count,
         );
@@ -72,7 +73,7 @@ fn read_session_from_jsonl(file_path: &Path) -> Option<SessionInfo> {
                         process_jsonl_line(
                             trimmed, &mut session_id, &mut cwd, &mut slug,
                             &mut model, &mut git_branch, &mut summary,
-                            &mut custom_title, &mut first_user_message,
+                            &mut custom_title, &mut ai_title, &mut first_user_message,
                             &mut first_timestamp, &mut last_timestamp,
                             &mut message_count, &mut tool_call_count,
                         );
@@ -109,6 +110,10 @@ fn read_session_from_jsonl(file_path: &Path) -> Option<SessionInfo> {
         message_count = 1;
     }
 
+    // A manual /rename (custom-title) always wins over Claude's generated
+    // ai-title; fall back to ai-title when the user hasn't renamed.
+    let custom_title = custom_title.or(ai_title);
+
     Some(SessionInfo {
         session_id,
         slug,
@@ -136,6 +141,7 @@ fn process_jsonl_line(
     git_branch: &mut Option<String>,
     summary: &mut Option<String>,
     custom_title: &mut Option<String>,
+    ai_title: &mut Option<String>,
     first_user_message: &mut Option<String>,
     first_timestamp: &mut f64,
     last_timestamp: &mut f64,
@@ -158,6 +164,15 @@ fn process_jsonl_line(
         "custom-title" => {
             if let Some(t) = data.get("customTitle").and_then(|t| t.as_str()) {
                 *custom_title = Some(t.to_string());
+            }
+        }
+        // Claude records its generated session title as `ai-title` lines and
+        // rewrites them as the conversation evolves; the last one is current.
+        // Kept separate from the manual `custom-title` so a later ai-title can't
+        // clobber a user's /rename (manual wins — see the combine below).
+        "ai-title" => {
+            if let Some(t) = data.get("aiTitle").and_then(|t| t.as_str()) {
+                *ai_title = Some(t.to_string());
             }
         }
         "user" => {

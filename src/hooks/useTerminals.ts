@@ -1,13 +1,39 @@
-import { useState, useCallback } from "react";
-import { ptySpawn, ptyKill } from "../lib/ipc";
+import { useState, useCallback, useEffect } from "react";
+import {
+  ptySpawn,
+  ptyKill,
+  getWorkspace,
+  saveWorkspace,
+} from "../lib/ipc";
 import { generateId } from "../lib/utils";
 import { DEFAULT_COMMAND, PROJECT_COLORS } from "../lib/constants";
+import { restoreCommand } from "../lib/restore";
 import { playSound } from "../lib/sounds";
-import type { TerminalInfo, TerminalStatus } from "../types/terminal";
+import type {
+  TerminalInfo,
+  TerminalStatus,
+  PersistedTerminal,
+} from "../types/terminal";
+
+function toPersisted(t: TerminalInfo): PersistedTerminal {
+  return {
+    cwd: t.cwd,
+    label: t.label,
+    color: t.color,
+    command: t.command,
+    project_id: t.project_id,
+  };
+}
 
 export function useTerminals() {
   const [terminals, setTerminals] = useState<TerminalInfo[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  // Terminals open in the previous session, awaiting a restore decision.
+  const [restorable, setRestorable] = useState<PersistedTerminal[]>([]);
+  // Persistence stays disarmed until the restore decision is made, so the empty
+  // initial state can't overwrite the saved workspace before we read it.
+  const [persistArmed, setPersistArmed] = useState(false);
 
   const spawn = useCallback(
     async (options?: {
@@ -27,6 +53,18 @@ export function useTerminals() {
       let command = options?.command ?? null;
       if (options?.resumeSessionId) {
         command = `${DEFAULT_COMMAND} --resume ${options.resumeSessionId}`;
+      }
+
+      // Give every fresh Claude session an explicit id so it can later be
+      // restored exactly (multiple sessions can share one folder, where
+      // --continue would be ambiguous). Skip if the command already selects a
+      // session (--resume / -r / --session-id).
+      if (
+        command &&
+        /(^|[/\s])claude(\s|$)/.test(command) &&
+        !/--resume\b|--session-id\b|(?:^|\s)-r\b/.test(command)
+      ) {
+        command = `${command} --session-id ${generateId()}`;
       }
 
       try {
@@ -82,6 +120,55 @@ export function useTerminals() {
     );
   }, []);
 
+  // Load the previous session's open terminals once on startup. If there's
+  // nothing to restore, arm persistence immediately; otherwise wait for the
+  // user's restore decision.
+  useEffect(() => {
+    getWorkspace()
+      .then((saved) => {
+        if (saved.length > 0) setRestorable(saved);
+        else setPersistArmed(true);
+      })
+      .catch((error) => {
+        console.error("Failed to load workspace:", error);
+        setPersistArmed(true);
+      });
+  }, []);
+
+  // Persist the set of open terminals whenever it changes (once armed). Status
+  // is intentionally excluded from the snapshot, so transient status flips that
+  // mutate `terminals` simply re-write the same persisted shape.
+  useEffect(() => {
+    if (!persistArmed) return;
+    saveWorkspace(terminals.map(toPersisted)).catch((error) =>
+      console.error("Failed to persist workspace:", error)
+    );
+  }, [terminals, persistArmed]);
+
+  const restore = useCallback(async () => {
+    const items = restorable;
+    setRestorable([]);
+    for (const t of items) {
+      try {
+        await spawn({
+          cwd: t.cwd,
+          command: restoreCommand(t.command),
+          label: t.label,
+          color: t.color,
+          projectId: t.project_id ?? undefined,
+        });
+      } catch (error) {
+        console.error("Failed to restore terminal:", t.label, error);
+      }
+    }
+    setPersistArmed(true);
+  }, [restorable, spawn]);
+
+  const dismissRestore = useCallback(() => {
+    setRestorable([]);
+    setPersistArmed(true);
+  }, []);
+
   return {
     terminals,
     activeId,
@@ -90,5 +177,8 @@ export function useTerminals() {
     kill,
     rename,
     updateStatus,
+    restorable,
+    restore,
+    dismissRestore,
   };
 }

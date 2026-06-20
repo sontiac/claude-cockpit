@@ -11,6 +11,7 @@ interface TerminalGridProps {
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
   onRename: (id: string, label: string) => void;
+  onSessionRename: (id: string, sessionName: string) => void;
   onStatusChange: (id: string, status: TerminalStatus) => void;
   onExit: (id: string, code: number | null) => void;
   onNewTerminal: () => void;
@@ -36,6 +37,7 @@ export function TerminalGrid({
   onSelect,
   onClose,
   onRename,
+  onSessionRename,
   onStatusChange,
   onExit,
   onNewTerminal,
@@ -122,6 +124,7 @@ export function TerminalGrid({
             onSelect={() => onSelect(terminal.id)}
             onClose={() => onClose(terminal.id)}
             onRename={(label) => onRename(terminal.id, label)}
+            onSessionRename={(name) => onSessionRename(terminal.id, name)}
             onStatusChange={(status) => onStatusChange(terminal.id, status)}
             onExit={(code) => onExit(terminal.id, code)}
           />

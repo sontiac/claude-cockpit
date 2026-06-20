@@ -48,27 +48,24 @@ function ProjectSection({
   const [expanded, setExpanded] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(false);
-  const [loaded, setLoaded] = useState(false);
 
+  // Refetch on every expand so renamed sessions (custom_title changes Claude
+  // writes to the .jsonl) show their current names instead of a stale cache.
   const loadSessions = useCallback(async () => {
-    if (loaded) return;
     setLoading(true);
     try {
       const data = await getSessions(20, project.path);
       setSessions(data);
-      setLoaded(true);
     } catch (err) {
       console.error("Failed to load sessions for", project.name, err);
     } finally {
       setLoading(false);
     }
-  }, [project.path, loaded, project.name]);
+  }, [project.path, project.name]);
 
   useEffect(() => {
-    if (expanded && !loaded) {
-      loadSessions();
-    }
-  }, [expanded, loaded, loadSessions]);
+    if (expanded) loadSessions();
+  }, [expanded, loadSessions]);
 
   return (
     <div>
@@ -105,7 +102,7 @@ function ProjectSection({
       {/* Sessions dropdown */}
       {expanded && (
         <div className="ml-5 border-l border-card-border pl-2 mb-1">
-          {loading ? (
+          {loading && sessions.length === 0 ? (
             <div className="px-2 py-2 text-xs text-foreground-muted">
               Loading...
             </div>

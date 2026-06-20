@@ -10,6 +10,7 @@ interface TerminalCellProps {
   onSelect: () => void;
   onClose: () => void;
   onRename: (label: string) => void;
+  onSessionRename: (sessionName: string) => void;
   onStatusChange: (status: TerminalStatus) => void;
   onExit: (code: number | null) => void;
 }
@@ -20,6 +21,7 @@ export function TerminalCell({
   onSelect,
   onClose,
   onRename,
+  onSessionRename,
   onStatusChange,
   onExit,
 }: TerminalCellProps) {
@@ -112,7 +114,7 @@ export function TerminalCell({
           id={terminal.id}
           onStatusChange={onStatusChange}
           onExit={onExit}
-          onRenameDetected={onRename}
+          onRenameDetected={onSessionRename}
         />
       </div>
     </div>
