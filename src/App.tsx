@@ -7,6 +7,7 @@ import { RestoreModal } from "./components/terminal/RestoreModal";
 import { AddProjectModal } from "./components/project/AddProjectModal";
 import { useTerminals } from "./hooks/useTerminals";
 import { useProjects } from "./hooks/useProjects";
+import { useFontSizeController, FontSizeContext } from "./hooks/useFontSize";
 import { useNotifications } from "./hooks/useNotifications";
 import { useSounds } from "./hooks/useSounds";
 import { setSessionTitle } from "./lib/ipc";
@@ -34,6 +35,7 @@ export function App() {
 
   const { notify } = useNotifications();
   const { play } = useSounds();
+  const { fontSize, increase, decrease, reset } = useFontSizeController();
 
   const [showAddProject, setShowAddProject] = useState(false);
   const [editProject, setEditProject] = useState<Project | null>(null);
@@ -54,13 +56,24 @@ export function App() {
           if (idx < terminals.length) {
             setActiveId(terminals[idx].id);
           }
+        } else if (e.key === "=" || e.key === "+") {
+          // Cmd/Ctrl + '+' zooms the terminal font in. preventDefault also stops
+          // the webview from zooming the whole page.
+          e.preventDefault();
+          increase();
+        } else if (e.key === "-" || e.key === "_") {
+          e.preventDefault();
+          decrease();
+        } else if (e.key === "0") {
+          e.preventDefault();
+          reset();
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeId, terminals, kill, setActiveId]);
+  }, [activeId, terminals, kill, setActiveId, increase, decrease, reset]);
 
   const handleNewTerminal = useCallback(async () => {
     await spawn();
@@ -147,6 +160,7 @@ export function App() {
   );
 
   return (
+    <FontSizeContext.Provider value={fontSize}>
     <div className="flex flex-col h-screen bg-background">
       <TitleBar />
 
@@ -174,7 +188,13 @@ export function App() {
         </div>
       </div>
 
-      <StatusBar terminals={terminals} />
+      <StatusBar
+        terminals={terminals}
+        fontSize={fontSize}
+        onIncreaseFont={increase}
+        onDecreaseFont={decrease}
+        onResetFont={reset}
+      />
 
       <AddProjectModal
         open={showAddProject || editProject !== null}
@@ -199,5 +219,6 @@ export function App() {
         onDismiss={dismissRestore}
       />
     </div>
+    </FontSizeContext.Provider>
   );
 }

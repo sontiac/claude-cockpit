@@ -1,11 +1,21 @@
-import { Terminal } from "lucide-react";
+import { Terminal, Minus, Plus } from "lucide-react";
 import type { TerminalInfo } from "../../types/terminal";
 
 interface StatusBarProps {
   terminals: TerminalInfo[];
+  fontSize: number;
+  onIncreaseFont: () => void;
+  onDecreaseFont: () => void;
+  onResetFont: () => void;
 }
 
-export function StatusBar({ terminals }: StatusBarProps) {
+export function StatusBar({
+  terminals,
+  fontSize,
+  onIncreaseFont,
+  onDecreaseFont,
+  onResetFont,
+}: StatusBarProps) {
   const active = terminals.filter((t) => t.status !== "exited").length;
   const responding = terminals.filter((t) => t.status === "responding").length;
 
@@ -21,6 +31,31 @@ export function StatusBar({ terminals }: StatusBarProps) {
             {responding} responding
           </span>
         )}
+      </div>
+
+      {/* Font zoom — keyboard equivalents are Cmd/Ctrl +/-/0 */}
+      <div className="ml-auto flex items-center gap-0.5">
+        <button
+          onClick={onDecreaseFont}
+          className="p-0.5 rounded hover:bg-white/10 hover:text-foreground"
+          title="Decrease font size (⌘−)"
+        >
+          <Minus size={11} />
+        </button>
+        <button
+          onClick={onResetFont}
+          className="px-1 tabular-nums hover:text-foreground"
+          title="Reset font size (⌘0)"
+        >
+          {fontSize}px
+        </button>
+        <button
+          onClick={onIncreaseFont}
+          className="p-0.5 rounded hover:bg-white/10 hover:text-foreground"
+          title="Increase font size (⌘+)"
+        >
+          <Plus size={11} />
+        </button>
       </div>
     </div>
   );

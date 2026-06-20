@@ -1,4 +1,4 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useEffect } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
@@ -13,6 +13,7 @@ import type { TerminalStatus } from "../types/terminal";
 
 interface UseTerminalOptions {
   id: string;
+  fontSize: number;
   onStatusChange?: (status: TerminalStatus) => void;
   onExit?: (code: number | null) => void;
   onRenameDetected?: (newName: string) => void;
@@ -103,8 +104,21 @@ function sessionNameFromTitle(title: string): string {
   return title.replace(/^[\s*☀-➿⠀-⣿️]+/, "").trim();
 }
 
-export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: UseTerminalOptions) {
+export function useTerminal({ id, fontSize, onStatusChange, onExit, onRenameDetected }: UseTerminalOptions) {
   const termRef = useRef<Terminal | null>(null);
+
+  // The fit addon and container are created inside `mount` but also need to be
+  // reachable from the font-size effect below, which reflows the terminal after
+  // changing the size. Holding them in refs keeps `mount` stable (depends only
+  // on `id`) while still exposing what the effect needs.
+  const fitAddonRef = useRef<FitAddon | null>(null);
+  const containerElRef = useRef<HTMLElement | null>(null);
+
+  // Initial font size for `new Terminal(...)`. Read through a ref so `mount`
+  // doesn't depend on `fontSize` — otherwise every zoom would tear down and
+  // recreate the terminal. Live changes are applied by the effect below.
+  const fontSizeRef = useRef(fontSize);
+  fontSizeRef.current = fontSize;
 
   // Keep the latest callbacks in a ref so `mount` can depend only on `id` and
   // stay referentially stable. Parents pass fresh inline callbacks on every
@@ -122,7 +136,7 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
       const term = new Terminal({
         cursorBlink: true,
         cursorStyle: "bar",
-        fontSize: 13,
+        fontSize: fontSizeRef.current,
         fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace',
         lineHeight: 1.2,
         scrollback: 10000,
@@ -152,6 +166,8 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
 
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
+      fitAddonRef.current = fitAddon;
+      containerElRef.current = container;
 
       term.open(container);
       fitAddon.fit();
@@ -293,10 +309,30 @@ export function useTerminal({ id, onStatusChange, onExit, onRenameDetected }: Us
         );
         term.dispose();
         termRef.current = null;
+        fitAddonRef.current = null;
+        containerElRef.current = null;
       };
     },
     [id]
   );
+
+  // Apply font-size changes to the live terminal and reflow to the new cell
+  // metrics, syncing the PTY to the new col/row count. No-ops before the
+  // terminal mounts (the refs are null) and at the original size, so this never
+  // recreates the terminal — it just resizes the existing one.
+  useEffect(() => {
+    const term = termRef.current;
+    const fitAddon = fitAddonRef.current;
+    const container = containerElRef.current;
+    if (!term || !fitAddon || !container) return;
+    term.options.fontSize = fontSize;
+    if (container.clientWidth === 0 || container.clientHeight === 0) return;
+    scrollSafeFit(fitAddon, container);
+    const dims = fitAddon.proposeDimensions();
+    if (dims && dims.cols > 0 && dims.rows > 0) {
+      ptyResize(id, dims.cols, dims.rows).catch(console.error);
+    }
+  }, [fontSize, id]);
 
   const focus = useCallback(() => {
     termRef.current?.focus();

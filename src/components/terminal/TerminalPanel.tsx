@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useTerminal } from "../../hooks/useTerminal";
+import { useFontSize } from "../../hooks/useFontSize";
 import type { TerminalStatus } from "../../types/terminal";
 
 interface TerminalPanelProps {
@@ -16,8 +17,10 @@ export function TerminalPanel({
   onRenameDetected,
 }: TerminalPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const fontSize = useFontSize();
   const { mount } = useTerminal({
     id,
+    fontSize,
     onStatusChange,
     onExit,
     onRenameDetected,
