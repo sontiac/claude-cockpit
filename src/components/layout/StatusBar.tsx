@@ -1,6 +1,8 @@
 import { Terminal, Minus, Plus } from "lucide-react";
 import type { TerminalInfo } from "../../types/terminal";
+import type { Theme } from "../../lib/themes";
 import { PlayerHud } from "../player/PlayerHud";
+import { ThemePicker } from "./ThemePicker";
 
 interface StatusBarProps {
   terminals: TerminalInfo[];
@@ -8,6 +10,11 @@ interface StatusBarProps {
   onIncreaseFont: () => void;
   onDecreaseFont: () => void;
   onResetFont: () => void;
+  themes: Theme[];
+  currentThemeId: string;
+  onSelectTheme: (id: string) => void;
+  onUploadTheme: () => void;
+  onRemoveTheme: (id: string) => void;
 }
 
 export function StatusBar({
@@ -16,12 +23,17 @@ export function StatusBar({
   onIncreaseFont,
   onDecreaseFont,
   onResetFont,
+  themes,
+  currentThemeId,
+  onSelectTheme,
+  onUploadTheme,
+  onRemoveTheme,
 }: StatusBarProps) {
   const active = terminals.filter((t) => t.status !== "exited").length;
   const responding = terminals.filter((t) => t.status === "responding").length;
 
   return (
-    <div className="h-6 flex items-center px-3 bg-background/80 border-t border-card-border text-xs text-foreground-muted select-none">
+    <div className="h-6 flex items-center px-3 bg-background/30 backdrop-blur-2xl border-t border-white/10 text-xs text-foreground-muted select-none">
       <div className="flex items-center gap-3">
         <span className="flex items-center gap-1">
           <Terminal size={11} />
@@ -40,7 +52,15 @@ export function StatusBar({
       </div>
 
       {/* Font zoom — keyboard equivalents are Cmd/Ctrl +/-/0 */}
-      <div className="flex items-center gap-0.5">
+      <div className="flex items-center gap-1">
+        <ThemePicker
+          themes={themes}
+          currentId={currentThemeId}
+          onSelect={onSelectTheme}
+          onUpload={onUploadTheme}
+          onRemove={onRemoveTheme}
+        />
+        <div className="w-px h-3 bg-card-border" />
         <button
           onClick={onDecreaseFont}
           className="p-0.5 rounded hover:bg-white/10 hover:text-foreground"

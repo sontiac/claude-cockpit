@@ -48,3 +48,8 @@ pub fn update_project(
 pub fn delete_project(id: String) -> Result<Vec<Project>, CockpitError> {
     store::delete_project(&id)
 }
+
+#[tauri::command]
+pub fn reorder_projects(ordered_ids: Vec<String>) -> Result<Vec<Project>, CockpitError> {
+    store::reorder_projects(&ordered_ids)
+}

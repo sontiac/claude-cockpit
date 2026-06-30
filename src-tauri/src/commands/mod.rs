@@ -1,3 +1,4 @@
+pub mod background;
 pub mod terminal;
 pub mod session;
 pub mod project;

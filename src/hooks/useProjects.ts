@@ -4,6 +4,7 @@ import {
   addProject as addProjectIpc,
   updateProject as updateProjectIpc,
   deleteProject as deleteProjectIpc,
+  reorderProjects as reorderProjectsIpc,
 } from "../lib/ipc";
 import type { Project } from "../types/project";
 
@@ -38,5 +39,30 @@ export function useProjects() {
     setProjects(updated);
   }, []);
 
-  return { projects, add, update, remove, refresh };
+  // Optimistically apply the new order so the drag feels instant, then persist.
+  // The backend echoes the canonical order back, which we adopt as the source of
+  // truth (and which corrects the optimistic state if a concurrent change raced).
+  const reorder = useCallback(async (orderedIds: string[]) => {
+    setProjects((prev) => {
+      const byId = new Map(prev.map((p) => [p.id, p]));
+      const next = orderedIds
+        .map((id) => byId.get(id))
+        .filter((p): p is Project => p !== undefined);
+      // Keep any project not present in orderedIds (shouldn't happen, but is
+      // cheap insurance against dropping a row).
+      for (const p of prev) {
+        if (!orderedIds.includes(p.id)) next.push(p);
+      }
+      return next;
+    });
+    try {
+      const updated = await reorderProjectsIpc(orderedIds);
+      setProjects(updated);
+    } catch (error) {
+      console.error("Failed to reorder projects:", error);
+      refresh();
+    }
+  }, [refresh]);
+
+  return { projects, add, update, remove, reorder, refresh };
 }

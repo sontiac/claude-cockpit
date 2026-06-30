@@ -12,10 +12,11 @@ name = "claude-cockpit"
 path = "src/main.rs"
 
 [dependencies]
-tauri = { version = "2", features = ["macos-private-api"] }
+tauri = { version = "2", features = ["macos-private-api", "protocol-asset"] }
 tauri-plugin-notification = "2"
 tauri-plugin-store = "2"
 tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"

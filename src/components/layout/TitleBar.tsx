@@ -15,7 +15,7 @@ export function TitleBar() {
 
   return (
     <div
-      className="h-10 flex items-center justify-between px-4 bg-background/80 backdrop-blur-md border-b border-card-border select-none"
+      className="h-10 flex items-center justify-between px-4 bg-background/30 backdrop-blur-2xl border-b border-white/10 select-none"
       onMouseDown={(e) => {
         // Only drag on the bar itself, not on buttons
         if ((e.target as HTMLElement).closest("[data-nodrag]")) return;

@@ -1,9 +1,8 @@
-import { useState } from "react";
-import { Plus, Grid2x2, Square, Columns2, LayoutGrid } from "lucide-react";
-import { TerminalCell } from "./TerminalCell";
+import { useMemo, useRef, useCallback } from "react";
+import { Plus, LayoutGrid } from "lucide-react";
+import { TerminalCanvas } from "./TerminalCanvas";
+import { useCanvasLayout, tileRects } from "../../hooks/useCanvasLayout";
 import type { TerminalInfo, TerminalStatus } from "../../types/terminal";
-
-type GridLayout = "single" | "cols-2" | "grid-2x2" | "grid-3x2";
 
 interface TerminalGridProps {
   terminals: TerminalInfo[];
@@ -17,20 +16,12 @@ interface TerminalGridProps {
   onNewTerminal: () => void;
 }
 
-const layoutConfig: Record<GridLayout, { cols: number; label: string }> = {
-  single: { cols: 1, label: "Single" },
-  "cols-2": { cols: 2, label: "2 Columns" },
-  "grid-2x2": { cols: 2, label: "2x2 Grid" },
-  "grid-3x2": { cols: 3, label: "3x2 Grid" },
-};
-
-const layoutIcons: Record<GridLayout, typeof Square> = {
-  single: Square,
-  "cols-2": Columns2,
-  "grid-2x2": Grid2x2,
-  "grid-3x2": LayoutGrid,
-};
-
+/**
+ * The terminal workspace: a single free-form canvas of draggable, resizable
+ * terminal windows. There is no separate "tiled" view — the old presets are now
+ * one-shot *arrange* actions that tidy the windows into a grid (1/2/3 columns or
+ * auto), after which each window can still be freely moved and resized.
+ */
 export function TerminalGrid({
   terminals,
   activeId,
@@ -42,11 +33,23 @@ export function TerminalGrid({
   onExit,
   onNewTerminal,
 }: TerminalGridProps) {
-  const [layout, setLayout] = useState<GridLayout>("single");
+  const ids = useMemo(() => terminals.map((t) => t.id), [terminals]);
+  const { layout, setRect, setAll } = useCanvasLayout(ids);
+  const surfaceRef = useRef<HTMLDivElement>(null);
 
-  // Auto-pick layout based on terminal count if user hasn't explicitly chosen
-  const effectiveLayout = layout;
-  const { cols } = layoutConfig[effectiveLayout];
+  // Tile every window into `cols` columns (0 = auto) filling the visible canvas
+  // area. Windows remain freely draggable/resizable after arranging.
+  const arrange = useCallback(
+    (cols: number) => {
+      const surface = surfaceRef.current;
+      if (!surface) return;
+      const w = surface.clientWidth;
+      const h = surface.clientHeight;
+      if (w === 0 || h === 0) return;
+      setAll(tileRects(ids, cols, w, h));
+    },
+    [ids, setAll]
+  );
 
   if (terminals.length === 0) {
     return (
@@ -65,35 +68,38 @@ export function TerminalGrid({
     );
   }
 
+  const colButtonClass =
+    "w-7 h-7 rounded-md text-xs font-semibold text-foreground-muted hover:text-foreground hover:bg-white/5 transition-colors";
+
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* Toolbar with layout selector */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-background-secondary/30 border-b border-card-border">
-        <div className="flex items-center gap-1">
-          <span className="text-xs text-foreground-muted mr-2">
-            {terminals.length} terminal{terminals.length !== 1 ? "s" : ""}
-          </span>
-        </div>
+      {/* Toolbar: window count + arrange presets. */}
+      <div className="flex items-center justify-between px-3 py-1.5 bg-background-secondary/20 backdrop-blur-xl border-b border-white/10">
+        <span className="text-xs text-foreground-muted">
+          {terminals.length} terminal{terminals.length !== 1 ? "s" : ""}
+        </span>
 
         <div className="flex items-center gap-1">
-          {/* Layout buttons */}
-          {(Object.keys(layoutConfig) as GridLayout[]).map((l) => {
-            const Icon = layoutIcons[l];
-            return (
-              <button
-                key={l}
-                onClick={() => setLayout(l)}
-                className={`p-1.5 rounded-md transition-colors ${
-                  layout === l
-                    ? "bg-white/10 text-foreground"
-                    : "text-foreground-muted hover:text-foreground hover:bg-white/5"
-                }`}
-                title={layoutConfig[l].label}
-              >
-                <Icon size={14} />
-              </button>
-            );
-          })}
+          <span className="text-[10px] uppercase tracking-wide text-foreground-muted/60 mr-1">
+            Arrange
+          </span>
+          <button
+            onClick={() => arrange(0)}
+            className="p-1.5 rounded-md text-foreground-muted hover:text-foreground hover:bg-white/5 transition-colors"
+            title="Tidy up (auto grid)"
+          >
+            <LayoutGrid size={14} />
+          </button>
+          {[1, 2, 3].map((cols) => (
+            <button
+              key={cols}
+              onClick={() => arrange(cols)}
+              className={colButtonClass}
+              title={`Arrange in ${cols} column${cols > 1 ? "s" : ""}`}
+            >
+              {cols}
+            </button>
+          ))}
 
           <div className="w-px h-4 bg-card-border mx-1" />
 
@@ -107,29 +113,19 @@ export function TerminalGrid({
         </div>
       </div>
 
-      {/* Terminal grid */}
-      <div
-        className="flex-1 min-h-0 grid gap-px bg-card-border/50"
-        style={{
-          gridTemplateColumns: `repeat(${cols}, 1fr)`,
-          gridAutoRows:
-            effectiveLayout === "single" ? "1fr" : "minmax(0, 1fr)",
-        }}
-      >
-        {terminals.map((terminal) => (
-          <TerminalCell
-            key={terminal.id}
-            terminal={terminal}
-            isActive={terminal.id === activeId}
-            onSelect={() => onSelect(terminal.id)}
-            onClose={() => onClose(terminal.id)}
-            onRename={(label) => onRename(terminal.id, label)}
-            onSessionRename={(name) => onSessionRename(terminal.id, name)}
-            onStatusChange={(status) => onStatusChange(terminal.id, status)}
-            onExit={(code) => onExit(terminal.id, code)}
-          />
-        ))}
-      </div>
+      <TerminalCanvas
+        terminals={terminals}
+        activeId={activeId}
+        layout={layout}
+        setRect={setRect}
+        surfaceRef={surfaceRef}
+        onSelect={onSelect}
+        onClose={onClose}
+        onRename={onRename}
+        onSessionRename={onSessionRename}
+        onStatusChange={onStatusChange}
+        onExit={onExit}
+      />
     </div>
   );
 }

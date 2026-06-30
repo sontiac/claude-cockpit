@@ -1,7 +1,7 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { TerminalInfo, PersistedTerminal } from "../types/terminal";
-import type { Session } from "../types/session";
+import type { Session, SessionContext } from "../types/session";
 import type { Project } from "../types/project";
 import type { PlayerStats } from "./player";
 
@@ -42,6 +42,9 @@ export const getSessions = (limit?: number, projectPath?: string) =>
 
 export const getProjectPaths = () => invoke<string[]>("get_project_paths");
 
+export const getSessionContext = (sessionId: string, cwd: string) =>
+  invoke<SessionContext | null>("get_session_context", { sessionId, cwd });
+
 // Player stats (gamification) — lifetime aggregates across all sessions
 export const getPlayerStats = () => invoke<PlayerStats>("get_player_stats");
 
@@ -56,6 +59,9 @@ export const updateProject = (project: Project) =>
 
 export const deleteProject = (id: string) =>
   invoke<Project[]>("delete_project", { id });
+
+export const reorderProjects = (orderedIds: string[]) =>
+  invoke<Project[]>("reorder_projects", { orderedIds });
 
 // Workspace (open-terminal) persistence
 export const getWorkspace = () =>
@@ -78,6 +84,27 @@ export const browseDirectory = (path: string) =>
   invoke<BrowseResult>("browse_directory", { path });
 
 export const getHomeDir = () => invoke<string>("get_home_dir");
+
+// Custom background images (user uploads)
+export interface BackgroundInfo {
+  id: string;
+  name: string;
+  /** Absolute filesystem path; turn into a loadable URL with `assetUrl`. */
+  path: string;
+}
+
+export const listBackgrounds = () =>
+  invoke<BackgroundInfo[]>("list_backgrounds");
+
+/** Opens a native image picker; resolves to the imported background, or null if cancelled. */
+export const importBackground = () =>
+  invoke<BackgroundInfo | null>("import_background");
+
+export const deleteBackground = (id: string) =>
+  invoke<BackgroundInfo[]>("delete_background", { id });
+
+/** Convert an absolute file path into a webview-loadable asset:// URL. */
+export const assetUrl = (path: string) => convertFileSrc(path);
 
 // Event listeners
 export const onTerminalOutput = (

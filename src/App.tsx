@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import type { CSSProperties } from "react";
 import { TitleBar } from "./components/layout/TitleBar";
 import { Sidebar } from "./components/layout/Sidebar";
 import { StatusBar } from "./components/layout/StatusBar";
@@ -13,6 +14,7 @@ import { useSounds } from "./hooks/useSounds";
 import { setSessionTitle } from "./lib/ipc";
 import { sessionIdFromCommand } from "./lib/restore";
 import { DEFAULT_COMMAND } from "./lib/constants";
+import { useTheme } from "./hooks/useTheme";
 import type { Project } from "./types/project";
 import type { TerminalStatus } from "./types/terminal";
 
@@ -30,12 +32,19 @@ export function App() {
     dismissRestore,
   } = useTerminals();
 
-  const { projects, add: addProject, update: updateProject } =
-    useProjects();
+  const {
+    projects,
+    add: addProject,
+    update: updateProject,
+    remove: removeProject,
+    reorder: reorderProjects,
+  } = useProjects();
 
   const { notify } = useNotifications();
   const { play } = useSounds();
   const { fontSize, increase, decrease, reset } = useFontSizeController();
+  const { theme, setTheme, themes, uploadBackground, removeBackground } =
+    useTheme();
 
   const [showAddProject, setShowAddProject] = useState(false);
   const [editProject, setEditProject] = useState<Project | null>(null);
@@ -161,7 +170,13 @@ export function App() {
 
   return (
     <FontSizeContext.Provider value={fontSize}>
-    <div className="flex flex-col h-screen bg-background">
+    {/* Full-window background image + legibility scrim, behind all content. */}
+    <div className="app-bg" style={{ backgroundImage: `url(${theme.image})` }} />
+    <div
+      className="app-bg-scrim"
+      style={{ "--scrim": theme.scrim } as CSSProperties}
+    />
+    <div className="flex flex-col h-screen bg-transparent">
       <TitleBar />
 
       <div className="flex flex-1 min-h-0">
@@ -169,6 +184,18 @@ export function App() {
           projects={projects}
           onLaunchProject={handleLaunchProject}
           onAddProject={() => setShowAddProject(true)}
+          onEditProject={(project) => setEditProject(project)}
+          onDeleteProject={(project) => {
+            if (
+              window.confirm(
+                `Remove "${project.name}" from cockpit? This only removes the project entry — your files and Claude sessions are untouched.`
+              )
+            ) {
+              removeProject(project.id);
+              play("click");
+            }
+          }}
+          onReorderProjects={reorderProjects}
           onNewTerminal={handleNewTerminal}
           onResumeSession={handleResumeSession}
         />
@@ -194,24 +221,36 @@ export function App() {
         onIncreaseFont={increase}
         onDecreaseFont={decrease}
         onResetFont={reset}
+        themes={themes}
+        currentThemeId={theme.id}
+        onSelectTheme={setTheme}
+        onUploadTheme={uploadBackground}
+        onRemoveTheme={removeBackground}
       />
 
-      <AddProjectModal
-        open={showAddProject || editProject !== null}
-        onClose={() => {
-          setShowAddProject(false);
-          setEditProject(null);
-        }}
-        onSave={(project) => {
-          if (editProject) {
-            updateProject(project);
-          } else {
-            addProject(project);
-          }
-          play("success");
-        }}
-        editProject={editProject}
-      />
+      {/* Mounted only while open, keyed by the target, so the form's initial
+          state is always seeded fresh from the project being edited (or empty
+          for a new one) — the modal's useState would otherwise retain the last
+          project's values across opens. */}
+      {(showAddProject || editProject !== null) && (
+        <AddProjectModal
+          key={editProject?.id ?? "new"}
+          open
+          onClose={() => {
+            setShowAddProject(false);
+            setEditProject(null);
+          }}
+          onSave={(project) => {
+            if (editProject) {
+              updateProject(project);
+            } else {
+              addProject(project);
+            }
+            play("success");
+          }}
+          editProject={editProject}
+        />
+      )}
 
       <RestoreModal
         terminals={restorable}

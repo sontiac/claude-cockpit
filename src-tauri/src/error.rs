@@ -14,6 +14,9 @@ pub enum CockpitError {
     #[error("Terminal not found: {0}")]
     NotFound(String),
 
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
+
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 }

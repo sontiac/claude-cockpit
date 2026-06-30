@@ -65,3 +65,23 @@ pub fn delete_project(id: &str) -> Result<Vec<Project>, crate::error::CockpitErr
     save_projects(&projects)?;
     Ok(projects)
 }
+
+/// Reorder the stored projects to match the given sequence of ids. Ids in
+/// `ordered_ids` are placed first, in that order; any project not named (e.g. a
+/// concurrent add the client hasn't seen) is appended in its existing relative
+/// order so nothing is ever dropped. Unknown ids are ignored.
+pub fn reorder_projects(
+    ordered_ids: &[String],
+) -> Result<Vec<Project>, crate::error::CockpitError> {
+    let mut projects = load_projects();
+
+    projects.sort_by_key(|p| {
+        ordered_ids
+            .iter()
+            .position(|id| id == &p.id)
+            .unwrap_or(usize::MAX)
+    });
+
+    save_projects(&projects)?;
+    Ok(projects)
+}

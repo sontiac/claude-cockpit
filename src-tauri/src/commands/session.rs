@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::error::CockpitError;
-use crate::session::{db, jsonl, types::SessionInfo};
+use crate::session::{db, jsonl, types::SessionContext, types::SessionInfo};
 
 #[tauri::command]
 pub fn get_sessions(
@@ -59,6 +59,17 @@ pub fn get_sessions(
     }
 
     Ok(result)
+}
+
+/// Current context-window usage for a live session, read from its transcript.
+/// Returns `None` when the session hasn't written a turn yet (so the caller can
+/// simply show nothing until data exists).
+#[tauri::command]
+pub fn get_session_context(
+    session_id: String,
+    cwd: String,
+) -> Result<Option<SessionContext>, CockpitError> {
+    Ok(jsonl::get_session_context(&session_id, &cwd))
 }
 
 #[tauri::command]

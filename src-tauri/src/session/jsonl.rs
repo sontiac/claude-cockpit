@@ -2,7 +2,7 @@ use std::fs;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
 
-use super::types::SessionInfo;
+use super::types::{SessionContext, SessionInfo};
 
 /// Max lines to read from the start of a JSONL file.
 /// Enough to capture session metadata, custom-title, first user message.
@@ -344,9 +344,14 @@ fn is_uuid(s: &str) -> bool {
 }
 
 /// Convert a filesystem path to the Claude project directory name convention.
-/// e.g. "/Users/kenneth/Documents/fun-projects" -> "-Users-kenneth-Documents-fun-projects"
+/// Claude slugifies the cwd by replacing every non-alphanumeric character with a
+/// dash, so "/Users/k/.config/my_app" -> "-Users-k--config-my-app". (An earlier
+/// version replaced only '/', which silently failed for any path containing a
+/// dot, underscore, or space.)
 fn path_to_project_dir_name(path: &str) -> String {
-    path.replace('/', "-")
+    path.chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect()
 }
 
 /// Get sessions from JSONL files, optionally filtered by project path.
@@ -458,6 +463,107 @@ pub fn get_project_paths_from_jsonl() -> Vec<String> {
 
     paths.sort();
     paths
+}
+
+/// How many bytes to read from the end of a transcript when computing context
+/// usage. A single assistant turn (with many tool results inlined) can be large,
+/// so we read a generous tail to be sure the last complete assistant line is
+/// fully contained. The first (partial) line of the window is discarded.
+const CONTEXT_TAIL_BYTES: u64 = 1_048_576; // 1 MiB
+
+/// Sum the parts of a `usage` object that occupy the context window: the full
+/// prompt for that turn (fresh input + cache-creation + cache-read) plus the
+/// turn's own output, which becomes part of the context for the next turn. This
+/// mirrors what `/context` reports.
+fn context_tokens_from_usage(usage: &serde_json::Value) -> Option<u64> {
+    let get = |k: &str| usage.get(k).and_then(|v| v.as_u64()).unwrap_or(0);
+    let total = get("input_tokens")
+        + get("cache_creation_input_tokens")
+        + get("cache_read_input_tokens")
+        + get("output_tokens");
+    if total == 0 {
+        None
+    } else {
+        Some(total)
+    }
+}
+
+/// Read how much of the context window a live session is currently using, by
+/// finding the most recent main-thread (non-sidechain) assistant turn in its
+/// transcript and summing that turn's `usage`. Sidechain turns (subagent/Task
+/// runs, `isSidechain: true`) have their own small context and are skipped so
+/// they can't mask the real conversation size.
+///
+/// The transcript lives at
+/// `~/.claude/projects/<slug(cwd)>/<session_id>.jsonl`. Returns `None` if the
+/// file doesn't exist yet (a fresh session that hasn't had a turn) or carries no
+/// usage data.
+pub fn get_session_context(session_id: &str, cwd: &str) -> Option<SessionContext> {
+    if !is_uuid(session_id) {
+        return None;
+    }
+
+    let projects_dir = dirs::home_dir()?.join(".claude").join("projects");
+    let dir = projects_dir.join(path_to_project_dir_name(cwd));
+    let file_path = dir.join(format!("{session_id}.jsonl"));
+
+    let metadata = fs::metadata(&file_path).ok()?;
+    let file_size = metadata.len();
+
+    let mut f = fs::File::open(&file_path).ok()?;
+    let seek_pos = file_size.saturating_sub(CONTEXT_TAIL_BYTES);
+    f.seek(SeekFrom::Start(seek_pos)).ok()?;
+    let mut buf = String::new();
+    // A JSONL transcript is UTF-8; a tail seek can land mid-codepoint, so read
+    // lossily and drop the first (partial) line below.
+    let mut raw = Vec::new();
+    f.read_to_end(&mut raw).ok()?;
+    buf.push_str(&String::from_utf8_lossy(&raw));
+
+    // If we seeked into the middle of the file, the first line is partial.
+    let start = if seek_pos > 0 {
+        buf.find('\n').map(|i| i + 1).unwrap_or(0)
+    } else {
+        0
+    };
+
+    let mut latest: Option<SessionContext> = None;
+    for line in buf[start..].lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let data: serde_json::Value = match serde_json::from_str(trimmed) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if data.get("type").and_then(|t| t.as_str()) != Some("assistant") {
+            continue;
+        }
+        if data
+            .get("isSidechain")
+            .and_then(|s| s.as_bool())
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        let message = match data.get("message") {
+            Some(m) => m,
+            None => continue,
+        };
+        let tokens = match message.get("usage").and_then(context_tokens_from_usage) {
+            Some(t) => t,
+            None => continue,
+        };
+        let model = message
+            .get("model")
+            .and_then(|m| m.as_str())
+            .map(|s| s.to_string());
+        // Lines are append-ordered, so the last qualifying line wins.
+        latest = Some(SessionContext { tokens, model });
+    }
+
+    latest
 }
 
 /// Best-effort conversion of Claude's project dir name back to a path.

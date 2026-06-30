@@ -42,13 +42,52 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 }
 
+/* Full-window background image + scrim. The image is applied inline (Vite-
+   hashed import) on `.app-bg`; the scrim sits above it to keep UI text legible
+   no matter how bright the image is. Both sit behind all app content. */
+.app-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.app-bg-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  /* Per-theme strength multiplier, set inline by App (1 = base). Darker at
+     top/bottom (where the title/status bars live) for contrast. */
+  --scrim: 1;
+  background: linear-gradient(
+    to bottom,
+    rgba(7, 11, 20, calc(0.74 * var(--scrim))) 0%,
+    rgba(7, 11, 20, calc(0.46 * var(--scrim))) 26%,
+    rgba(7, 11, 20, calc(0.4 * var(--scrim))) 60%,
+    rgba(7, 11, 20, calc(0.6 * var(--scrim))) 100%
+  );
+}
+
 /* Glass morphism card */
 .glass-card {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(20px) saturate(1.3);
   border-radius: 16px;
   transition: all 0.2s ease;
+}
+
+/* Frosted terminal window: a glass-topped dark card floating on the canvas.
+   The header strip frosts the background behind it; the body stays dark and
+   near-opaque so terminal text remains crisp and readable. */
+.terminal-window {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+.terminal-window.is-active {
+  border-color: rgba(6, 182, 212, 0.45);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5), 0 0 24px rgba(6, 182, 212, 0.18);
 }
 
 .glass-card:hover {

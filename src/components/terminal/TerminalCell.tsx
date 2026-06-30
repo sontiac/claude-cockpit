@@ -1,7 +1,10 @@
 import { useState, useCallback } from "react";
+import type React from "react";
 import { X, Pencil, Check } from "lucide-react";
 import { StatusDot } from "../shared/StatusDot";
 import { TerminalPanel } from "./TerminalPanel";
+import { ContextPill } from "./ContextPill";
+import { useSessionContext } from "../../hooks/useSessionContext";
 import type { TerminalInfo, TerminalStatus } from "../../types/terminal";
 
 interface TerminalCellProps {
@@ -13,6 +16,12 @@ interface TerminalCellProps {
   onSessionRename: (sessionName: string) => void;
   onStatusChange: (status: TerminalStatus) => void;
   onExit: (code: number | null) => void;
+  /**
+   * When provided (canvas mode), the header acts as a drag handle. Pointer-downs
+   * that don't originate on an interactive control are forwarded here so the
+   * canvas can move the cell. Undefined in tiled grid mode.
+   */
+  onHeaderPointerDown?: (e: React.PointerEvent) => void;
 }
 
 export function TerminalCell({
@@ -24,9 +33,15 @@ export function TerminalCell({
   onSessionRename,
   onStatusChange,
   onExit,
+  onHeaderPointerDown,
 }: TerminalCellProps) {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(terminal.label);
+  const context = useSessionContext(
+    terminal.command,
+    terminal.cwd,
+    terminal.status
+  );
 
   const handleSubmitRename = useCallback(() => {
     if (editName.trim()) {
@@ -37,14 +52,17 @@ export function TerminalCell({
 
   return (
     <div
-      className={`flex flex-col min-h-0 bg-background ${
+      className={`flex flex-col h-full min-h-0 bg-background ${
         isActive ? "ring-1 ring-accent-cyan/40" : ""
       }`}
       onClick={onSelect}
     >
       {/* Cell header */}
       <div
-        className={`flex items-center gap-2 px-2 py-1 border-b select-none ${
+        onPointerDown={onHeaderPointerDown}
+        className={`flex items-center gap-2 px-2 py-1 border-b select-none backdrop-blur-md ${
+          onHeaderPointerDown && !editing ? "cursor-grab active:cursor-grabbing" : ""
+        } ${
           isActive
             ? "border-accent-cyan/30 bg-accent-cyan/5"
             : "border-card-border bg-background-secondary/30"
@@ -95,6 +113,10 @@ export function TerminalCell({
               <Pencil size={10} />
             </button>
           </>
+        )}
+
+        {context && context.tokens > 0 && (
+          <ContextPill tokens={context.tokens} />
         )}
 
         <button

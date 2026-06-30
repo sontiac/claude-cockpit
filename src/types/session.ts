@@ -12,3 +12,10 @@ export interface Session {
   custom_title: string | null;
   first_user_message: string | null;
 }
+
+/** Current context-window usage for a live session, read from its transcript. */
+export interface SessionContext {
+  /** Tokens resident in the context window (prompt + last output). */
+  tokens: number;
+  model: string | null;
+}
