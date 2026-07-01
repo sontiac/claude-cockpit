@@ -41,7 +41,7 @@ export function NoteCell({
       {/* Cell header */}
       <div
         onPointerDown={onHeaderPointerDown}
-        className={`flex items-center gap-2 px-2 py-1 border-b select-none backdrop-blur-md ${
+        className={`group flex items-center gap-2 px-2 py-1 border-b select-none backdrop-blur-md ${
           onHeaderPointerDown && !editing
             ? "cursor-grab active:cursor-grabbing"
             : ""

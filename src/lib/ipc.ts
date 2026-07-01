@@ -104,11 +104,27 @@ export const saveWindowNotes = (label: string, notes: PersistedNote[]) =>
 export const getNoteContent = (id: string) =>
   invoke<unknown | null>("get_note_content", { id });
 
-export const saveNoteContent = (id: string, content: unknown) =>
-  invoke<void>("save_note_content", { id, content });
+// Tombstone set: once a note's content has been deleted, any later save for
+// that id is ignored. This exists because deletion (removeNoteContent) and
+// the editor's unmount-flush (saveNoteContent) can fire concurrently — e.g.
+// closing a note within ~500ms of an edit — and race across the IPC
+// boundary to the backend's thread pool, where invocation order on the
+// frontend does not guarantee completion order on the backend. If the save
+// lands after the delete, it would recreate an orphaned content file with
+// no corresponding pane-list entry. Note ids are UUIDs that are never
+// reused, so this set only grows by notes deleted within the current
+// session — negligible, and deliberately never evicted.
+const deletedNoteContent = new Set<string>();
 
-export const removeNoteContent = (id: string) =>
-  invoke<void>("remove_note_content", { id });
+export const saveNoteContent = (id: string, content: unknown) => {
+  if (deletedNoteContent.has(id)) return Promise.resolve();
+  return invoke<void>("save_note_content", { id, content });
+};
+
+export const removeNoteContent = (id: string) => {
+  deletedNoteContent.add(id);
+  return invoke<void>("remove_note_content", { id });
+};
 
 export const clearNotes = () => invoke<void>("clear_notes");
 

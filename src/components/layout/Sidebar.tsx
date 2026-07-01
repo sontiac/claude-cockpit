@@ -3,6 +3,7 @@ import type React from "react";
 import {
   Plus,
   Terminal,
+  StickyNote,
   ChevronDown,
   ChevronRight,
   Play,
@@ -25,6 +26,7 @@ interface SidebarProps {
   onDeleteProject: (project: Project) => void;
   onReorderProjects: (orderedIds: string[]) => void;
   onNewTerminal: () => void;
+  onNewNote: () => void;
   onResumeSession: (sessionId: string, cwd: string, label: string) => void;
 }
 
@@ -212,6 +214,7 @@ export function Sidebar({
   onDeleteProject,
   onReorderProjects,
   onNewTerminal,
+  onNewNote,
   onResumeSession,
 }: SidebarProps) {
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
@@ -262,6 +265,13 @@ export function Sidebar({
         >
           <Terminal size={15} />
           <span>New Terminal</span>
+        </button>
+        <button
+          onClick={onNewNote}
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-foreground-muted hover:text-foreground hover:bg-white/5"
+        >
+          <StickyNote size={15} />
+          <span>New Note</span>
         </button>
       </div>
 

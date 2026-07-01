@@ -115,7 +115,7 @@ export function App() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey) {
-        if (e.key === "n" && e.shiftKey) {
+        if (e.key.toLowerCase() === "n" && e.shiftKey) {
           e.preventDefault();
           handleNewNote();
           return;
@@ -157,11 +157,11 @@ export function App() {
     activeId,
     terminals,
     activeWorkspaceId,
-    kill,
     setActiveId,
     increase,
     decrease,
     reset,
+    handleNewTerminal,
     handleNewNote,
     closePane,
   ]);
@@ -306,6 +306,7 @@ export function App() {
           }}
           onReorderProjects={reorderProjects}
           onNewTerminal={() => handleNewTerminal()}
+          onNewNote={() => handleNewNote()}
           onResumeSession={handleResumeSession}
         />
 
