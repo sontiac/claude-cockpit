@@ -159,3 +159,11 @@ button:active {
   font-size: 0.75rem;
   color: var(--foreground-muted);
 }
+
+/* Note editor (TipTap) */
+.note-prose ul[data-type="taskList"] { list-style: none; padding-left: 0; }
+.note-prose ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 0.5rem; }
+.note-prose ul[data-type="taskList"] li > label { margin-top: 0.15rem; }
+.note-prose ul[data-type="taskList"] li[data-checked="true"] > div { text-decoration: line-through; opacity: 0.6; }
+.note-prose ul:not([data-type="taskList"]) { list-style: disc; padding-left: 1.25rem; }
+.note-prose p { margin: 0.15rem 0; }
