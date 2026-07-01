@@ -68,6 +68,7 @@ pub fn run() {
             commands::background::import_background,
             commands::background::delete_background,
             commands::window::open_window,
+            commands::window::cycle_window,
             commands::window::quit_app,
         ])
         .build(tauri::generate_context!())
