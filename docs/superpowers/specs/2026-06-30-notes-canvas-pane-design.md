@@ -8,8 +8,9 @@
 Add a **note pane** as a first-class citizen of the Canvas, alongside terminals.
 A note is a draggable/resizable window whose body is a lightweight WYSIWYG editor
 for prose, bullet lists, and clickable checkbox to-do items — no raw markdown
-syntax typing required. Notes are scoped and persisted per-workspace, exactly like
-terminals, so they survive relaunch through the existing session-restore flow.
+syntax typing required. Notes are scoped per-workspace and persisted to their own
+durable files (separate from the terminal session), so they quietly reload on every
+launch — independent of the terminal recovery prompt.
 
 ## Motivation
 
@@ -47,14 +48,26 @@ type Pane =
   no change to the layout, drag, resize, or arrange machinery.
 - The canvas remains the single window system — no parallel notes layer.
 
-### Persistence: existence vs. content
+### Persistence: separate from the terminal session (deliberate)
 
-A note has two distinct pieces of persisted state, stored separately:
+**Key decision (revised from the initial draft):** notes do **not** ride inside
+`WindowState` / the terminal recovery flow. Terminals and notes have different
+persistence semantics:
 
-1. **Existence + position + workspace + label + color** — rides in the per-window
-   session state. Add a `notes: Vec<PersistedNote>` field to the Rust `WindowState`
-   struct with `#[serde(default)]` so existing session files (which lack the key)
-   still deserialize.
+- A terminal is a **live process**. Not restoring it loses a running Claude
+  session — hence the un-dismissable, double-confirm recovery modal. It is at-risk,
+  ephemeral session state.
+- A note is **durable text on disk**. It is never at risk and should quietly reload
+  every launch. Coupling it to the recovery modal would be wrong: notes would appear
+  in the "Recover N terminals?" count, and **Discard** would delete the user's
+  to-do list along with the abandoned terminals.
+
+So notes get their own persistence path, keyed per window label exactly like
+`WindowState`, and `useTerminals` plus the delicate multi-window restore code stay
+**untouched**. A note has two pieces of persisted state, stored separately:
+
+1. **Pane list (existence + placement)** — `~/.claude-cockpit/notes/windows/{label}.json`,
+   one file per window label. An array of `PersistedNote`:
 
    ```rust
    struct PersistedNote {
@@ -65,22 +78,32 @@ A note has two distinct pieces of persisted state, stored separately:
    }
    ```
 
-   Because note existence lives in `WindowState` next to terminals, the existing
-   restore modal, multi-window recovery, and workspace flows cover notes for free —
-   there is no separate restore path.
+   This references `workspace_id` the same way `PersistedTerminal` does — workspaces
+   themselves still live only in `WindowState`, so there is no second source of
+   truth for workspace identity. The pane list is loaded on launch **independently**
+   and is **not** gated by the recovery modal (notes reload immediately, whatever
+   the user chooses for their terminals). Multi-window works because each window
+   loads its own `{label}.json`.
 
-2. **Text content** — stored in its own file, `~/.claude-cockpit/notes/{id}.json`,
-   holding TipTap/ProseMirror document JSON. Three new Tauri commands:
-   - `get_note_content(id) -> Option<serde_json::Value>` (returns null/None if the
-     file does not exist yet)
-   - `save_note_content(id, content)` — writes the JSON file (called debounced
-     from the editor)
-   - `remove_note_content(id)` — deletes the file (on note delete and on session
-     discard)
+2. **Text content** — `~/.claude-cockpit/notes/content/{id}.json`, holding
+   TipTap/ProseMirror document JSON. Content is ProseMirror JSON, not a markdown
+   string — lossless and the format TipTap natively loads and saves.
 
-   Storing content separately keeps session JSON small and decouples note text
-   from window lifecycle. Content is ProseMirror JSON, not a markdown string —
-   lossless and the format TipTap natively loads and saves.
+**Tauri commands (new `notes` module):**
+- `get_window_notes(label) -> Vec<PersistedNote>` (empty if no file)
+- `save_window_notes(label, notes)` — writes the per-window pane list
+- `get_note_content(id) -> Option<serde_json::Value>` (None if no file yet)
+- `save_note_content(id, content)` — writes the content file (debounced from editor)
+- `remove_note_content(id)` — deletes a content file (on note delete)
+- `clear_notes()` — removes all note pane-list and content files (called on session
+  discard, alongside `clear_session`)
+
+Both `label` and `id` are validated with the same filename-safety check the
+workspace store uses (`is_safe_label`) so a value can never escape the notes dir.
+
+Because notes live outside `WindowState`, `useNotes` has its own small
+"loaded" gate (mirroring `persistArmed`) so the empty initial React state cannot
+overwrite the saved pane list before the load completes.
 
 ### The note editor (`NoteCell`)
 
@@ -107,23 +130,31 @@ time and does not affect the design.
 - Click a checkbox to toggle done; done items render with strikethrough.
 - No raw markdown syntax (`##`, etc.) is needed or surfaced.
 
-**Content loading/saving:**
-- On mount, `NoteCell` lazily calls `get_note_content(id)` and initializes the
-  editor (empty doc if none).
-- Edits mark the note dirty and schedule a debounced `save_note_content` (~500ms).
-- On unmount, flush any pending save so no keystrokes are lost.
+**Content loading/saving (`useNoteContent(id)` hook, used by `NoteCell`):**
+- On mount, lazily calls `get_note_content(id)` and initializes the editor (empty
+  doc if none).
+- Edits schedule a debounced `save_note_content` (~500ms).
+- On unmount, flushes any pending save so no keystrokes are lost.
+- Factored as a small standalone hook so the debounce/flush logic is testable in
+  isolation, separate from the TipTap editor UI.
 
 ### Hooks & App wiring
 
-- New **`useNotes`** hook, structured to parallel `useTerminals`:
-  - Owns note panes state.
-  - `addNote`, `renameNote`, `removeNote`.
-  - Workspace assignment and reassignment (mirror of the terminal logic).
-  - Restore: reads `WindowState.notes` on startup and recreates the panes; each
-    `NoteCell` loads its own content lazily.
-- **`App.tsx`** composes `terminals` + `notes` into one `panes` array, filtered by
-  the active workspace, and passes it to the canvas. Persistence saves both
-  terminals and notes into the single `WindowState`.
+- New **`useNotes`** hook, structured to parallel `useTerminals` but owning only the
+  note pane list (never touching `WindowState` / terminal recovery):
+  - Owns note panes state (`{id, label, color, workspaceId}[]`).
+  - `addNote`, `renameNote`, `removeNote` (remove also calls `remove_note_content`).
+  - Workspace assignment and reassignment on workspace delete (mirror of the
+    terminal logic).
+  - Own load-on-mount from `get_window_notes(label)` and own debounced
+    `save_window_notes(label, …)` writer, gated by an internal `loaded` flag so the
+    empty initial state can't clobber the saved file.
+  - `discardNotes()` — clears local state and calls `clear_notes()`; wired into the
+    recovery modal's Discard so a discarded session also drops notes.
+- **`App.tsx`** composes `terminals` + `notes` into one `panes` array **per
+  workspace** (the canvas is instantiated per workspace in `App.tsx:251`), and
+  passes it to each `TerminalGrid`. The RestoreModal's `onDiscard` calls both
+  `discard()` (terminals) and `discardNotes()`.
 
 ### Spawn UX & counts
 
@@ -141,9 +172,13 @@ time and does not affect the design.
   deleted via `remove_note_content`. (This is an intentional divergence from
   terminals, which close without confirm.)
 - **Deleting a workspace** reassigns its notes to the fallback workspace, mirroring
-  `useTerminals.deleteWorkspace`.
-- **Session discard** removes note content files in addition to clearing session
-  state.
+  `useTerminals.deleteWorkspace`. (Workspaces are owned by `useTerminals`; the note
+  reassignment is driven by `App` observing the surviving workspace set.)
+- **Session discard** clears all note files (`clear_notes()`) alongside the terminal
+  session, so Discard is a true clean slate.
+- **Notes are excluded from the recovery modal.** They reload immediately on launch
+  regardless of the Recover/Discard choice, because they are durable data, not
+  at-risk live sessions.
 
 ## Testing
 
@@ -155,12 +190,12 @@ works out of the box. The plan therefore includes bootstrapping a frontend harne
   `@testing-library/react` as needed) to devDependencies, a `vitest.config.ts`, and
   a `"test"` script. This is real setup work, not a line item.
 - Unit tests for `useNotes`: add, rename, remove, workspace reassignment on
-  workspace delete, and restore from `WindowState.notes`.
-- Unit test for the note content debounce/flush behavior (edits coalesce; unmount
+  workspace delete, and restore from a loaded pane list.
+- Unit test for `useNoteContent` debounce/flush behavior (edits coalesce; unmount
   flushes).
-- Rust test (`cargo test`, no new infra): `WindowState` containing `notes`
-  round-trips through serde, and an old session file without the `notes` key still
-  deserializes (via `#[serde(default)]`).
+- Rust tests (`cargo test`, no new infra): per-window note-list round-trips through
+  serde; content write/read/remove works; `clear_notes` removes everything; and the
+  filename-safety check rejects a traversal-style `label`/`id`.
 
 The typecheck floor stays `npm run build` (`tsc`).
 
@@ -172,3 +207,8 @@ The typecheck floor stays `npm run build` (`tsc`).
   forbid). Accepted deliberately.
 - The **close-confirm on notes** is a small behavioral divergence from terminals;
   judged warranted because a note's text is a user artifact.
+- **Notes use a second persistence path** (`notes/…` files + their own save effect)
+  rather than reusing `WindowState`. This is mild duplication of the per-window save
+  pattern, accepted deliberately: it keeps the freshly-shipped multi-window recovery
+  code untouched and gives notes the correct "durable document, not at-risk session"
+  semantics (see the Persistence section).
