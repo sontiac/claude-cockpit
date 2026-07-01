@@ -57,6 +57,12 @@ export function useNotes() {
     setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, label } : n)));
   }, []);
 
+  const moveNote = useCallback((id: string, workspaceId: string) => {
+    setNotes((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, workspaceId } : n))
+    );
+  }, []);
+
   const removeNote = useCallback((id: string) => {
     setNotes((prev) => prev.filter((n) => n.id !== id));
     removeNoteContent(id).catch((e) =>
@@ -106,5 +112,13 @@ export function useNotes() {
     );
   }, [notes, loaded]);
 
-  return { notes, addNote, renameNote, removeNote, reassignNotes, discardNotes };
+  return {
+    notes,
+    addNote,
+    renameNote,
+    moveNote,
+    removeNote,
+    reassignNotes,
+    discardNotes,
+  };
 }

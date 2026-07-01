@@ -60,6 +60,24 @@ describe("useNotes", () => {
     expect(result.current.notes[0].workspaceId).toBe("ws-keep");
   });
 
+  it("moves a single note to another workspace, leaving others", async () => {
+    const { result } = renderHook(() => useNotes());
+    await waitFor(() => expect(ipc.getWindowNotes).toHaveBeenCalled());
+
+    let a = "";
+    let b = "";
+    act(() => {
+      a = result.current.addNote("ws-1").id;
+      b = result.current.addNote("ws-1").id;
+    });
+    act(() => result.current.moveNote(a, "ws-2"));
+
+    const moved = result.current.notes.find((n) => n.id === a);
+    const other = result.current.notes.find((n) => n.id === b);
+    expect(moved?.workspaceId).toBe("ws-2");
+    expect(other?.workspaceId).toBe("ws-1");
+  });
+
   it("restores notes loaded from disk", async () => {
     ipc.getWindowNotes.mockResolvedValue([
       { id: "n-1", label: "Todo", color: "#abc", workspace_id: "ws-9" },

@@ -163,6 +163,12 @@ export function useTerminals() {
     );
   }, []);
 
+  const moveTerminal = useCallback((id: string, workspaceId: string) => {
+    setTerminals((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, workspaceId } : t))
+    );
+  }, []);
+
   const updateStatus = useCallback((id: string, status: TerminalStatus) => {
     setTerminals((prev) =>
       prev.map((t) => (t.id === id ? { ...t, status } : t))
@@ -388,6 +394,7 @@ export function useTerminals() {
     spawn,
     kill,
     rename,
+    moveTerminal,
     updateStatus,
     restorePrompt,
     recover,
