@@ -1,6 +1,7 @@
 pub mod background;
 pub mod commands;
 pub mod error;
+pub mod notes;
 pub mod project;
 pub mod pty;
 pub mod session;
@@ -54,6 +55,12 @@ pub fn run() {
             commands::workspace::list_session_labels,
             commands::workspace::clear_session,
             commands::workspace::set_session_title,
+            commands::notes::get_window_notes,
+            commands::notes::save_window_notes,
+            commands::notes::get_note_content,
+            commands::notes::save_note_content,
+            commands::notes::remove_note_content,
+            commands::notes::clear_notes,
             commands::stats::get_player_stats,
             commands::system::browse_directory,
             commands::system::get_home_dir,
