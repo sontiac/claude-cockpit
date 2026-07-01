@@ -14,14 +14,16 @@ export function useNoteContent(id: string) {
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const pendingRef = useRef<unknown | null>(null);
+  const hasPendingRef = useRef(false);
 
   const flush = useCallback(() => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = undefined;
     }
-    if (pendingRef.current !== null) {
+    if (hasPendingRef.current) {
       const content = pendingRef.current;
+      hasPendingRef.current = false;
       pendingRef.current = null;
       saveNoteContent(id, content).catch((e) =>
         console.error("Failed to save note content:", e)
@@ -32,6 +34,7 @@ export function useNoteContent(id: string) {
   const onChange = useCallback(
     (content: unknown) => {
       pendingRef.current = content;
+      hasPendingRef.current = true;
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(flush, SAVE_DEBOUNCE_MS);
     },

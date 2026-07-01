@@ -27,7 +27,9 @@ describe("useNoteContent", () => {
   it("coalesces rapid edits into a single debounced save", async () => {
     vi.useFakeTimers();
     const { result } = renderHook(() => useNoteContent("n-1"));
-    await vi.runOnlyPendingTimersAsync(); // let load resolve
+    await act(async () => {
+      await vi.runOnlyPendingTimersAsync(); // let load resolve
+    });
 
     act(() => result.current.onChange({ v: 1 }));
     act(() => result.current.onChange({ v: 2 }));
@@ -45,11 +47,31 @@ describe("useNoteContent", () => {
   it("flushes a pending save on unmount", async () => {
     vi.useFakeTimers();
     const { result, unmount } = renderHook(() => useNoteContent("n-1"));
-    await vi.runOnlyPendingTimersAsync();
+    await act(async () => {
+      await vi.runOnlyPendingTimersAsync();
+    });
 
     act(() => result.current.onChange({ v: 42 }));
     unmount();
     expect(ipc.saveNoteContent).toHaveBeenCalledWith("n-1", { v: 42 });
+    vi.useRealTimers();
+  });
+
+  it("saves a null content edit (emptied note) instead of silently dropping it", async () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() => useNoteContent("n-1"));
+    await act(async () => {
+      await vi.runOnlyPendingTimersAsync(); // let load resolve
+    });
+
+    act(() => result.current.onChange(null));
+    expect(ipc.saveNoteContent).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    expect(ipc.saveNoteContent).toHaveBeenCalledTimes(1);
+    expect(ipc.saveNoteContent).toHaveBeenCalledWith("n-1", null);
     vi.useRealTimers();
   });
 });
