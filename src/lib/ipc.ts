@@ -7,6 +7,7 @@ import type {
 } from "../types/terminal";
 import type { Session, SessionContext } from "../types/session";
 import type { Project } from "../types/project";
+import type { PersistedNote } from "../types/pane";
 import type { PlayerStats } from "./player";
 
 // Terminal commands
@@ -92,6 +93,24 @@ export const listSessionLabels = () =>
 
 /** Discard the entire saved session (all windows). */
 export const clearSession = () => invoke<void>("clear_session");
+
+// Notes commands
+export const getWindowNotes = (label: string) =>
+  invoke<PersistedNote[]>("get_window_notes", { label });
+
+export const saveWindowNotes = (label: string, notes: PersistedNote[]) =>
+  invoke<void>("save_window_notes", { label, notes });
+
+export const getNoteContent = (id: string) =>
+  invoke<unknown | null>("get_note_content", { id });
+
+export const saveNoteContent = (id: string, content: unknown) =>
+  invoke<void>("save_note_content", { id, content });
+
+export const removeNoteContent = (id: string) =>
+  invoke<void>("remove_note_content", { id });
+
+export const clearNotes = () => invoke<void>("clear_notes");
 
 export const setSessionTitle = (sessionId: string, title: string) =>
   invoke<void>("set_session_title", { sessionId, title });
