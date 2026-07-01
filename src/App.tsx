@@ -8,6 +8,7 @@ import { TerminalGrid } from "./components/terminal/TerminalGrid";
 import { RestoreModal } from "./components/terminal/RestoreModal";
 import { AddProjectModal } from "./components/project/AddProjectModal";
 import { useTerminals } from "./hooks/useTerminals";
+import { useNotes } from "./hooks/useNotes";
 import { useProjects } from "./hooks/useProjects";
 import { useFontSizeController, FontSizeContext } from "./hooks/useFontSize";
 import { useNotifications } from "./hooks/useNotifications";
@@ -18,6 +19,7 @@ import { DEFAULT_COMMAND } from "./lib/constants";
 import { useTheme } from "./hooks/useTheme";
 import type { Project } from "./types/project";
 import type { TerminalStatus } from "./types/terminal";
+import type { Pane } from "./types/pane";
 
 export function App() {
   const {
@@ -40,6 +42,15 @@ export function App() {
   } = useTerminals();
 
   const {
+    notes,
+    addNote,
+    renameNote,
+    removeNote,
+    reassignNotes,
+    discardNotes,
+  } = useNotes();
+
+  const {
     projects,
     add: addProject,
     update: updateProject,
@@ -56,16 +67,65 @@ export function App() {
   const [showAddProject, setShowAddProject] = useState(false);
   const [editProject, setEditProject] = useState<Project | null>(null);
 
+  const handleNewTerminal = useCallback(
+    async (workspaceId?: string) => {
+      await spawn({ workspaceId });
+    },
+    [spawn]
+  );
+
+  const handleNewNote = useCallback(
+    (workspaceId?: string) => {
+      const note = addNote(workspaceId ?? activeWorkspaceId);
+      setActiveId(note.id);
+      play("launch");
+    },
+    [addNote, activeWorkspaceId, setActiveId, play]
+  );
+
+  const closePane = useCallback(
+    (id: string) => {
+      const note = notes.find((n) => n.id === id);
+      if (note) {
+        if (
+          window.confirm(
+            `Delete note "${note.label}"? Its contents will be permanently removed.`
+          )
+        ) {
+          removeNote(id);
+          if (activeId === id) setActiveId(null);
+          play("click");
+        }
+        return;
+      }
+      kill(id);
+    },
+    [notes, removeNote, kill, activeId, setActiveId, play]
+  );
+
+  const renamePane = useCallback(
+    (id: string, label: string) => {
+      if (notes.some((n) => n.id === id)) renameNote(id, label);
+      else rename(id, label);
+    },
+    [notes, renameNote, rename]
+  );
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey) {
+        if (e.key === "n" && e.shiftKey) {
+          e.preventDefault();
+          handleNewNote();
+          return;
+        }
         if (e.key === "t") {
           e.preventDefault();
           handleNewTerminal();
         } else if (e.key === "w") {
           e.preventDefault();
-          if (activeId) kill(activeId);
+          if (activeId) closePane(activeId);
         } else if (e.key >= "1" && e.key <= "9") {
           e.preventDefault();
           // Select the Nth terminal within the active workspace.
@@ -102,14 +162,9 @@ export function App() {
     increase,
     decrease,
     reset,
+    handleNewNote,
+    closePane,
   ]);
-
-  const handleNewTerminal = useCallback(
-    async (workspaceId?: string) => {
-      await spawn({ workspaceId });
-    },
-    [spawn]
-  );
 
   // Live terminal count per workspace, for the workspace tabs.
   const workspaceCounts = useMemo(() => {
@@ -119,6 +174,14 @@ export function App() {
     }
     return counts;
   }, [terminals]);
+
+  const workspaceNoteCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const n of notes) {
+      counts[n.workspaceId] = (counts[n.workspaceId] ?? 0) + 1;
+    }
+    return counts;
+  }, [notes]);
 
   const handleLaunchProject = useCallback(
     async (project: Project) => {
@@ -200,6 +263,20 @@ export function App() {
     [updateStatus]
   );
 
+  const handleDiscard = useCallback(async () => {
+    await Promise.all([discard(), discardNotes()]);
+  }, [discard, discardNotes]);
+
+  const handleDeleteWorkspace = useCallback(
+    (id: string) => {
+      const remaining = workspaces.filter((w) => w.id !== id);
+      if (remaining.length === 0) return; // mirror deleteWorkspace's guard
+      reassignNotes(id, remaining[0].id);
+      deleteWorkspace(id);
+    },
+    [workspaces, reassignNotes, deleteWorkspace]
+  );
+
   return (
     <FontSizeContext.Provider value={fontSize}>
     {/* Full-window background image + legibility scrim, behind all content. */}
@@ -237,10 +314,11 @@ export function App() {
             workspaces={workspaces}
             activeId={activeWorkspaceId}
             counts={workspaceCounts}
+            noteCounts={workspaceNoteCounts}
             onSwitch={switchWorkspace}
             onCreate={createWorkspace}
             onRename={renameWorkspace}
-            onDelete={deleteWorkspace}
+            onDelete={handleDeleteWorkspace}
             onNewWindow={() => openWindow().catch(console.error)}
           />
 
@@ -250,9 +328,14 @@ export function App() {
           <div className="relative flex-1 min-h-0">
             {workspaces.map((ws) => {
               const isActive = ws.id === activeWorkspaceId;
-              const wsTerminals = terminals.filter(
-                (t) => t.workspaceId === ws.id
-              );
+              const wsPanes: Pane[] = [
+                ...terminals
+                  .filter((t) => t.workspaceId === ws.id)
+                  .map((t) => ({ kind: "terminal" as const, ...t })),
+                ...notes
+                  .filter((n) => n.workspaceId === ws.id)
+                  .map((n) => ({ kind: "note" as const, ...n })),
+              ];
               return (
                 <div
                   key={ws.id}
@@ -264,15 +347,16 @@ export function App() {
                   }}
                 >
                   <TerminalGrid
-                    terminals={wsTerminals}
+                    panes={wsPanes}
                     activeId={activeId}
                     onSelect={setActiveId}
-                    onClose={kill}
-                    onRename={rename}
+                    onClosePane={closePane}
+                    onRenamePane={renamePane}
                     onSessionRename={handleSessionRename}
                     onStatusChange={handleStatusChange}
                     onExit={handleExit}
                     onNewTerminal={() => handleNewTerminal(ws.id)}
+                    onNewNote={() => handleNewNote(ws.id)}
                   />
                 </div>
               );
@@ -323,7 +407,7 @@ export function App() {
         terminalCount={restorePrompt?.terminalCount ?? 0}
         windowCount={restorePrompt?.windowCount ?? 0}
         onRecover={recover}
-        onDiscard={discard}
+        onDiscard={handleDiscard}
       />
     </div>
     </FontSizeContext.Provider>

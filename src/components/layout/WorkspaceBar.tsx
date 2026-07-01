@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Plus, X, AppWindow } from "lucide-react";
+import { Plus, X, AppWindow, StickyNote } from "lucide-react";
 import type { Workspace } from "../../types/terminal";
 
 interface WorkspaceBarProps {
   workspaces: Workspace[];
   activeId: string;
   counts: Record<string, number>;
+  noteCounts: Record<string, number>;
   onSwitch: (id: string) => void;
   onCreate: () => void;
   onRename: (id: string, name: string) => void;
@@ -22,6 +23,7 @@ export function WorkspaceBar({
   workspaces,
   activeId,
   counts,
+  noteCounts,
   onSwitch,
   onCreate,
   onRename,
@@ -82,6 +84,15 @@ export function WorkspaceBar({
                 }`}
               >
                 {count}
+              </span>
+            )}
+            {(noteCounts[ws.id] ?? 0) > 0 && (
+              <span
+                className="ml-1 inline-flex items-center gap-0.5 text-[10px] text-foreground-muted"
+                title={`${noteCounts[ws.id]} note${noteCounts[ws.id] !== 1 ? "s" : ""}`}
+              >
+                <StickyNote size={9} />
+                {noteCounts[ws.id]}
               </span>
             )}
             {workspaces.length > 1 && (
