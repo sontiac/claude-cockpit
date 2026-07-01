@@ -50,6 +50,10 @@ export const openWindow = (label?: string, geometry?: Geometry) =>
 /** Cleanly quit the whole app (kills child processes, then exits). */
 export const quitApp = () => invoke<void>("quit_app");
 
+/** Cycle window focus to the next/previous cockpit window. */
+export const cycleWindow = (direction: "next" | "prev") =>
+  invoke<void>("cycle_window", { direction });
+
 // Session commands
 export const getSessions = (limit?: number, projectPath?: string) =>
   invoke<Session[]>("get_sessions", {

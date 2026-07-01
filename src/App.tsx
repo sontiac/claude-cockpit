@@ -13,7 +13,7 @@ import { useProjects } from "./hooks/useProjects";
 import { useFontSizeController, FontSizeContext } from "./hooks/useFontSize";
 import { useNotifications } from "./hooks/useNotifications";
 import { useSounds } from "./hooks/useSounds";
-import { setSessionTitle, openWindow } from "./lib/ipc";
+import { setSessionTitle, openWindow, cycleWindow } from "./lib/ipc";
 import { sessionIdFromCommand } from "./lib/restore";
 import { DEFAULT_COMMAND } from "./lib/constants";
 import { useTheme } from "./hooks/useTheme";
@@ -114,6 +114,14 @@ export function App() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Option+Tab cycles cockpit windows (Option+Shift+Tab reverses).
+      // preventDefault stops the focused terminal from receiving a Tab.
+      if (e.altKey && e.code === "Tab") {
+        e.preventDefault();
+        cycleWindow(e.shiftKey ? "prev" : "next").catch(console.error);
+        return;
+      }
+
       if (e.metaKey || e.ctrlKey) {
         if (e.key.toLowerCase() === "n" && e.shiftKey) {
           e.preventDefault();
