@@ -1,0 +1,101 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { act, renderHook, waitFor } from "@testing-library/react";
+
+// Mock the Tauri window label + ipc before importing the hook.
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({ label: "main" }),
+}));
+
+const ipc = vi.hoisted(() => ({
+  getWindowNotes: vi.fn(async () => [] as any[]),
+  saveWindowNotes: vi.fn(async () => {}),
+  removeNoteContent: vi.fn(async () => {}),
+  clearNotes: vi.fn(async () => {}),
+}));
+vi.mock("../lib/ipc", () => ipc);
+
+import { useNotes } from "./useNotes";
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  ipc.getWindowNotes.mockResolvedValue([]);
+});
+
+describe("useNotes", () => {
+  it("adds a note into the given workspace", async () => {
+    const { result } = renderHook(() => useNotes());
+    await waitFor(() => expect(ipc.getWindowNotes).toHaveBeenCalled());
+
+    act(() => {
+      result.current.addNote("ws-1");
+    });
+    expect(result.current.notes).toHaveLength(1);
+    expect(result.current.notes[0].workspaceId).toBe("ws-1");
+  });
+
+  it("renames and removes notes", async () => {
+    const { result } = renderHook(() => useNotes());
+    await waitFor(() => expect(ipc.getWindowNotes).toHaveBeenCalled());
+
+    let id = "";
+    act(() => {
+      id = result.current.addNote("ws-1").id;
+    });
+    act(() => result.current.renameNote(id, "Groceries"));
+    expect(result.current.notes[0].label).toBe("Groceries");
+
+    act(() => result.current.removeNote(id));
+    expect(result.current.notes).toHaveLength(0);
+    expect(ipc.removeNoteContent).toHaveBeenCalledWith(id);
+  });
+
+  it("reassigns notes from a deleted workspace to a fallback", async () => {
+    const { result } = renderHook(() => useNotes());
+    await waitFor(() => expect(ipc.getWindowNotes).toHaveBeenCalled());
+
+    act(() => {
+      result.current.addNote("ws-doomed");
+    });
+    act(() => result.current.reassignNotes("ws-doomed", "ws-keep"));
+    expect(result.current.notes[0].workspaceId).toBe("ws-keep");
+  });
+
+  it("restores notes loaded from disk", async () => {
+    ipc.getWindowNotes.mockResolvedValue([
+      { id: "n-1", label: "Todo", color: "#abc", workspace_id: "ws-9" },
+    ]);
+    const { result } = renderHook(() => useNotes());
+    await waitFor(() => expect(result.current.notes).toHaveLength(1));
+    expect(result.current.notes[0]).toEqual({
+      id: "n-1",
+      label: "Todo",
+      color: "#abc",
+      workspaceId: "ws-9",
+    });
+  });
+
+  it("does not persist before the initial load completes", async () => {
+    let resolveLoad: (v: any[]) => void = () => {};
+    ipc.getWindowNotes.mockReturnValue(
+      new Promise((r) => (resolveLoad = r)) as any
+    );
+    renderHook(() => useNotes());
+    // Load hasn't resolved yet — the save effect must not have fired.
+    expect(ipc.saveWindowNotes).not.toHaveBeenCalled();
+    await act(async () => resolveLoad([]));
+  });
+
+  it("discardNotes clears state and files", async () => {
+    ipc.getWindowNotes.mockResolvedValue([
+      { id: "n-1", label: "Todo", color: "#abc", workspace_id: "ws-9" },
+    ]);
+    const { result } = renderHook(() => useNotes());
+    await waitFor(() => expect(result.current.notes).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.discardNotes();
+    });
+    expect(result.current.notes).toHaveLength(0);
+    expect(ipc.clearNotes).toHaveBeenCalled();
+  });
+});
