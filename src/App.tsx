@@ -1,8 +1,9 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import type { CSSProperties } from "react";
 import { TitleBar } from "./components/layout/TitleBar";
 import { Sidebar } from "./components/layout/Sidebar";
 import { StatusBar } from "./components/layout/StatusBar";
+import { WorkspaceBar } from "./components/layout/WorkspaceBar";
 import { TerminalGrid } from "./components/terminal/TerminalGrid";
 import { RestoreModal } from "./components/terminal/RestoreModal";
 import { AddProjectModal } from "./components/project/AddProjectModal";
@@ -11,7 +12,7 @@ import { useProjects } from "./hooks/useProjects";
 import { useFontSizeController, FontSizeContext } from "./hooks/useFontSize";
 import { useNotifications } from "./hooks/useNotifications";
 import { useSounds } from "./hooks/useSounds";
-import { setSessionTitle } from "./lib/ipc";
+import { setSessionTitle, openWindow } from "./lib/ipc";
 import { sessionIdFromCommand } from "./lib/restore";
 import { DEFAULT_COMMAND } from "./lib/constants";
 import { useTheme } from "./hooks/useTheme";
@@ -27,9 +28,15 @@ export function App() {
     kill,
     rename,
     updateStatus,
-    restorable,
-    restore,
-    dismissRestore,
+    restorePrompt,
+    recover,
+    discard,
+    workspaces,
+    activeWorkspaceId,
+    switchWorkspace,
+    createWorkspace,
+    renameWorkspace,
+    deleteWorkspace,
   } = useTerminals();
 
   const {
@@ -61,9 +68,13 @@ export function App() {
           if (activeId) kill(activeId);
         } else if (e.key >= "1" && e.key <= "9") {
           e.preventDefault();
+          // Select the Nth terminal within the active workspace.
           const idx = parseInt(e.key) - 1;
-          if (idx < terminals.length) {
-            setActiveId(terminals[idx].id);
+          const inWs = terminals.filter(
+            (t) => t.workspaceId === activeWorkspaceId
+          );
+          if (idx < inWs.length) {
+            setActiveId(inWs[idx].id);
           }
         } else if (e.key === "=" || e.key === "+") {
           // Cmd/Ctrl + '+' zooms the terminal font in. preventDefault also stops
@@ -82,11 +93,32 @@ export function App() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeId, terminals, kill, setActiveId, increase, decrease, reset]);
+  }, [
+    activeId,
+    terminals,
+    activeWorkspaceId,
+    kill,
+    setActiveId,
+    increase,
+    decrease,
+    reset,
+  ]);
 
-  const handleNewTerminal = useCallback(async () => {
-    await spawn();
-  }, [spawn]);
+  const handleNewTerminal = useCallback(
+    async (workspaceId?: string) => {
+      await spawn({ workspaceId });
+    },
+    [spawn]
+  );
+
+  // Live terminal count per workspace, for the workspace tabs.
+  const workspaceCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const t of terminals) {
+      counts[t.workspaceId] = (counts[t.workspaceId] ?? 0) + 1;
+    }
+    return counts;
+  }, [terminals]);
 
   const handleLaunchProject = useCallback(
     async (project: Project) => {
@@ -196,22 +228,56 @@ export function App() {
             }
           }}
           onReorderProjects={reorderProjects}
-          onNewTerminal={handleNewTerminal}
+          onNewTerminal={() => handleNewTerminal()}
           onResumeSession={handleResumeSession}
         />
 
         <div className="flex-1 flex flex-col min-w-0">
-          <TerminalGrid
-            terminals={terminals}
-            activeId={activeId}
-            onSelect={setActiveId}
-            onClose={kill}
-            onRename={rename}
-            onSessionRename={handleSessionRename}
-            onStatusChange={handleStatusChange}
-            onExit={handleExit}
-            onNewTerminal={handleNewTerminal}
+          <WorkspaceBar
+            workspaces={workspaces}
+            activeId={activeWorkspaceId}
+            counts={workspaceCounts}
+            onSwitch={switchWorkspace}
+            onCreate={createWorkspace}
+            onRename={renameWorkspace}
+            onDelete={deleteWorkspace}
+            onNewWindow={() => openWindow().catch(console.error)}
           />
+
+          {/* One canvas per workspace, stacked. Inactive ones stay mounted
+              (terminals keep running, screens stay live) but hidden, so
+              switching workspaces never blanks a session. */}
+          <div className="relative flex-1 min-h-0">
+            {workspaces.map((ws) => {
+              const isActive = ws.id === activeWorkspaceId;
+              const wsTerminals = terminals.filter(
+                (t) => t.workspaceId === ws.id
+              );
+              return (
+                <div
+                  key={ws.id}
+                  className="absolute inset-0 flex flex-col"
+                  style={{
+                    visibility: isActive ? "visible" : "hidden",
+                    zIndex: isActive ? 1 : 0,
+                    pointerEvents: isActive ? "auto" : "none",
+                  }}
+                >
+                  <TerminalGrid
+                    terminals={wsTerminals}
+                    activeId={activeId}
+                    onSelect={setActiveId}
+                    onClose={kill}
+                    onRename={rename}
+                    onSessionRename={handleSessionRename}
+                    onStatusChange={handleStatusChange}
+                    onExit={handleExit}
+                    onNewTerminal={() => handleNewTerminal(ws.id)}
+                  />
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -253,9 +319,11 @@ export function App() {
       )}
 
       <RestoreModal
-        terminals={restorable}
-        onRestore={restore}
-        onDismiss={dismissRestore}
+        open={restorePrompt !== null}
+        terminalCount={restorePrompt?.terminalCount ?? 0}
+        windowCount={restorePrompt?.windowCount ?? 0}
+        onRecover={recover}
+        onDiscard={discard}
       />
     </div>
     </FontSizeContext.Provider>

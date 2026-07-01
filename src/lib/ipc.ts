@@ -1,6 +1,10 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { TerminalInfo, PersistedTerminal } from "../types/terminal";
+import type {
+  BackendTerminalInfo,
+  WindowState,
+  Geometry,
+} from "../types/terminal";
 import type { Session, SessionContext } from "../types/session";
 import type { Project } from "../types/project";
 import type { PlayerStats } from "./player";
@@ -14,7 +18,7 @@ export const ptySpawn = (params: {
   color: string;
   projectId?: string;
 }) =>
-  invoke<TerminalInfo>("pty_spawn", {
+  invoke<BackendTerminalInfo>("pty_spawn", {
     id: params.id,
     cwd: params.cwd,
     command: params.command ?? null,
@@ -31,7 +35,19 @@ export const ptyResize = (id: string, cols: number, rows: number) =>
 
 export const ptyKill = (id: string) => invoke<void>("pty_kill", { id });
 
-export const getTerminals = () => invoke<TerminalInfo[]>("get_terminals");
+export const getTerminals = () =>
+  invoke<BackendTerminalInfo[]>("get_terminals");
+
+/** Open a new independent app window (its own workspaces + terminals).
+ *  Pass a label + geometry to recreate a saved window in place. */
+export const openWindow = (label?: string, geometry?: Geometry) =>
+  invoke<void>("open_window", {
+    label: label ?? null,
+    geometry: geometry ?? null,
+  });
+
+/** Cleanly quit the whole app (kills child processes, then exits). */
+export const quitApp = () => invoke<void>("quit_app");
 
 // Session commands
 export const getSessions = (limit?: number, projectPath?: string) =>
@@ -63,12 +79,19 @@ export const deleteProject = (id: string) =>
 export const reorderProjects = (orderedIds: string[]) =>
   invoke<Project[]>("reorder_projects", { orderedIds });
 
-// Workspace (open-terminal) persistence
-export const getWorkspace = () =>
-  invoke<PersistedTerminal[]>("get_workspace");
+// Per-window session persistence (each window saves under its own label)
+export const getWindowState = (label: string) =>
+  invoke<WindowState>("get_window_state", { label });
 
-export const saveWorkspace = (terminals: PersistedTerminal[]) =>
-  invoke<void>("save_workspace", { terminals });
+export const saveWindowState = (label: string, state: WindowState) =>
+  invoke<void>("save_window_state", { label, state });
+
+/** Labels of all windows with saved state, for recreating a session. */
+export const listSessionLabels = () =>
+  invoke<string[]>("list_session_labels");
+
+/** Discard the entire saved session (all windows). */
+export const clearSession = () => invoke<void>("clear_session");
 
 export const setSessionTitle = (sessionId: string, title: string) =>
   invoke<void>("set_session_title", { sessionId, title });

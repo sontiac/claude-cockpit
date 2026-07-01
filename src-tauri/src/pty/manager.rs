@@ -1,9 +1,35 @@
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
 use std::io::{Read, Write};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
+
+/// The user's real `PATH`, as seen by their interactive login shell.
+///
+/// When cockpit is launched from Finder/Spotlight/Dock, macOS gives the process
+/// a minimal `PATH` (`/usr/bin:/bin:/usr/sbin:/sbin`) that omits wherever tools
+/// like `claude` actually live (npm-global, Homebrew, `~/.local/bin`, nvm, …).
+/// Every terminal we spawn would then fail to find `claude`. We resolve the real
+/// PATH once by asking the login+interactive shell for it, and inject it into
+/// every child. Cached because it spawns a shell (which may source slow rc files).
+fn login_shell_path() -> Option<String> {
+    static PATH: OnceLock<Option<String>> = OnceLock::new();
+    PATH.get_or_init(|| {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+        // -i (interactive) + -l (login) so both .zshrc and .zprofile-style PATH
+        // edits are applied, matching what the user sees in a real terminal.
+        std::process::Command::new(&shell)
+            .args(["-ilc", "printf %s \"$PATH\""])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    })
+    .clone()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -104,6 +130,13 @@ impl PtyHandle {
             }
             cmd.env(key, value);
         }
+        // Replace the (possibly minimal, GUI-launch) PATH with the user's real
+        // login-shell PATH so tools like `claude` are found regardless of how
+        // cockpit itself was launched.
+        if let Some(path) = login_shell_path() {
+            cmd.env("PATH", path);
+        }
+
         // Terminal-specific overrides applied on top of the inherited env.
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");

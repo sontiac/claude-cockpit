@@ -17,6 +17,9 @@ pub enum CockpitError {
     #[error("Invalid input: {0}")]
     InvalidInput(String),
 
+    #[error("Window error: {0}")]
+    Window(String),
+
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 }

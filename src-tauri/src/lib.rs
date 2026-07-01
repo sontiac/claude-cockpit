@@ -9,6 +9,7 @@ pub mod stats;
 pub mod workspace;
 
 use state::AppState;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -48,8 +49,10 @@ pub fn run() {
             commands::project::update_project,
             commands::project::delete_project,
             commands::project::reorder_projects,
-            commands::workspace::get_workspace,
-            commands::workspace::save_workspace,
+            commands::workspace::get_window_state,
+            commands::workspace::save_window_state,
+            commands::workspace::list_session_labels,
+            commands::workspace::clear_session,
             commands::workspace::set_session_title,
             commands::stats::get_player_stats,
             commands::system::browse_directory,
@@ -57,7 +60,18 @@ pub fn run() {
             commands::background::list_backgrounds,
             commands::background::import_background,
             commands::background::delete_background,
+            commands::window::open_window,
+            commands::window::quit_app,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        // Final safety net: whatever path leads to exit (title-bar quit, Cmd+Q,
+        // last window closed), drop every PtyHandle so no Claude child leaks.
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                if let Ok(mut terminals) = app_handle.state::<AppState>().terminals.lock() {
+                    terminals.clear();
+                }
+            }
+        });
 }

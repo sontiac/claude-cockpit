@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Minus, Square, X, Maximize2 } from "lucide-react";
+import { quitApp } from "../../lib/ipc";
 
 export function TitleBar() {
   const [isMaximized, setIsMaximized] = useState(false);
@@ -11,7 +12,9 @@ export function TitleBar() {
     await appWindow.toggleMaximize();
     setIsMaximized(await appWindow.isMaximized());
   };
-  const handleClose = () => appWindow.close();
+  // The title-bar X closes the whole program (matches the user's mental model),
+  // exiting cleanly so no windowless zombie process lingers.
+  const handleClose = () => quitApp().catch(console.error);
 
   return (
     <div
