@@ -1,5 +1,5 @@
 import { useMemo, useRef, useCallback } from "react";
-import { Plus, LayoutGrid, StickyNote } from "lucide-react";
+import { Plus, LayoutGrid, StickyNote, Columns3 } from "lucide-react";
 import { TerminalCanvas } from "./TerminalCanvas";
 import { useCanvasLayout, tileRects } from "../../hooks/useCanvasLayout";
 import type { Pane } from "../../types/pane";
@@ -115,6 +115,13 @@ export function TerminalGrid({
             title="Tidy up (auto grid)"
           >
             <LayoutGrid size={14} />
+          </button>
+          <button
+            onClick={() => arrange(panes.length)}
+            className="p-1.5 rounded-md text-foreground-muted hover:text-foreground hover:bg-white/5 transition-colors"
+            title="Fit all as full-height columns"
+          >
+            <Columns3 size={14} />
           </button>
           {[1, 2, 3].map((cols) => (
             <button
