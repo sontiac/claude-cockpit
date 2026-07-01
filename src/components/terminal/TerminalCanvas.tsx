@@ -4,7 +4,7 @@ import { TerminalCell } from "./TerminalCell";
 import { NoteCell } from "./NoteCell";
 import { MIN_W, MIN_H, type Rect } from "../../hooks/useCanvasLayout";
 import type { Pane } from "../../types/pane";
-import type { TerminalStatus } from "../../types/terminal";
+import type { TerminalStatus, Workspace } from "../../types/terminal";
 
 interface TerminalCanvasProps {
   panes: Pane[];
@@ -19,6 +19,8 @@ interface TerminalCanvasProps {
   onSessionRename: (id: string, sessionName: string) => void;
   onStatusChange: (id: string, status: TerminalStatus) => void;
   onExit: (id: string, code: number | null) => void;
+  workspaces: Workspace[];
+  onMovePane: (id: string, workspaceId: string) => void;
 }
 
 // How far the canvas extends past the furthest window, so there's always room
@@ -54,6 +56,8 @@ export function TerminalCanvas({
   onSessionRename,
   onStatusChange,
   onExit,
+  workspaces,
+  onMovePane,
 }: TerminalCanvasProps) {
   const ids = useMemo(() => panes.map((p) => p.id), [panes]);
   const gestureRef = useRef<Gesture | null>(null);
@@ -129,6 +133,7 @@ export function TerminalCanvas({
           if (!rect) return null;
           const isActive = pane.id === activeId;
           const headerPointerDown = (e: React.PointerEvent) => {
+            if (e.button !== 0) return;
             if ((e.target as HTMLElement).closest("button, input")) return;
             onSelect(pane.id);
             startGesture(e, pane.id, "move");
@@ -158,6 +163,8 @@ export function TerminalCanvas({
                   onStatusChange={(status) => onStatusChange(pane.id, status)}
                   onExit={(code) => onExit(pane.id, code)}
                   onHeaderPointerDown={headerPointerDown}
+                  workspaces={workspaces}
+                  onMove={(wsId) => onMovePane(pane.id, wsId)}
                 />
               ) : (
                 <NoteCell
@@ -167,6 +174,8 @@ export function TerminalCanvas({
                   onClose={() => onClosePane(pane.id)}
                   onRename={(label) => onRenamePane(pane.id, label)}
                   onHeaderPointerDown={headerPointerDown}
+                  workspaces={workspaces}
+                  onMove={(wsId) => onMovePane(pane.id, wsId)}
                 />
               )}
               {/* Resize handle (bottom-right corner). */}

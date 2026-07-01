@@ -4,8 +4,9 @@ import { X, Pencil, Check } from "lucide-react";
 import { StatusDot } from "../shared/StatusDot";
 import { TerminalPanel } from "./TerminalPanel";
 import { ContextPill } from "./ContextPill";
+import { MoveToWorkspaceMenu } from "./MoveToWorkspaceMenu";
 import { useSessionContext } from "../../hooks/useSessionContext";
-import type { TerminalInfo, TerminalStatus } from "../../types/terminal";
+import type { TerminalInfo, TerminalStatus, Workspace } from "../../types/terminal";
 
 interface TerminalCellProps {
   terminal: TerminalInfo;
@@ -22,6 +23,8 @@ interface TerminalCellProps {
    * canvas can move the cell. Undefined in tiled grid mode.
    */
   onHeaderPointerDown?: (e: React.PointerEvent) => void;
+  workspaces: Workspace[];
+  onMove: (workspaceId: string) => void;
 }
 
 export function TerminalCell({
@@ -34,9 +37,12 @@ export function TerminalCell({
   onStatusChange,
   onExit,
   onHeaderPointerDown,
+  workspaces,
+  onMove,
 }: TerminalCellProps) {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(terminal.label);
+  const [moveMenuOpen, setMoveMenuOpen] = useState(false);
   const context = useSessionContext(
     terminal.command,
     terminal.cwd,
@@ -60,6 +66,11 @@ export function TerminalCell({
       {/* Cell header */}
       <div
         onPointerDown={onHeaderPointerDown}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onSelect();
+          setMoveMenuOpen(true);
+        }}
         className={`group flex items-center gap-2 px-2 py-1 border-b select-none backdrop-blur-md ${
           onHeaderPointerDown && !editing ? "cursor-grab active:cursor-grabbing" : ""
         } ${
@@ -118,6 +129,14 @@ export function TerminalCell({
         {context && context.tokens > 0 && (
           <ContextPill tokens={context.tokens} />
         )}
+
+        <MoveToWorkspaceMenu
+          currentWorkspaceId={terminal.workspaceId}
+          workspaces={workspaces}
+          onMove={onMove}
+          open={moveMenuOpen}
+          onOpenChange={setMoveMenuOpen}
+        />
 
         <button
           onClick={(e) => {

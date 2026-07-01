@@ -2,8 +2,10 @@ import { useState, useCallback } from "react";
 import type React from "react";
 import { X, Pencil, Check, StickyNote } from "lucide-react";
 import { NoteEditor } from "./NoteEditor";
+import { MoveToWorkspaceMenu } from "./MoveToWorkspaceMenu";
 import { useNoteContent } from "../../hooks/useNoteContent";
 import type { NotePane } from "../../types/pane";
+import type { Workspace } from "../../types/terminal";
 
 interface NoteCellProps {
   note: NotePane;
@@ -12,6 +14,8 @@ interface NoteCellProps {
   onClose: () => void;
   onRename: (label: string) => void;
   onHeaderPointerDown?: (e: React.PointerEvent) => void;
+  workspaces: Workspace[];
+  onMove: (workspaceId: string) => void;
 }
 
 export function NoteCell({
@@ -21,9 +25,12 @@ export function NoteCell({
   onClose,
   onRename,
   onHeaderPointerDown,
+  workspaces,
+  onMove,
 }: NoteCellProps) {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(note.label);
+  const [moveMenuOpen, setMoveMenuOpen] = useState(false);
   const { loaded, initialContent, onChange } = useNoteContent(note.id);
 
   const handleSubmitRename = useCallback(() => {
@@ -41,6 +48,11 @@ export function NoteCell({
       {/* Cell header */}
       <div
         onPointerDown={onHeaderPointerDown}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onSelect();
+          setMoveMenuOpen(true);
+        }}
         className={`group flex items-center gap-2 px-2 py-1 border-b select-none backdrop-blur-md ${
           onHeaderPointerDown && !editing
             ? "cursor-grab active:cursor-grabbing"
@@ -101,6 +113,14 @@ export function NoteCell({
             </button>
           </>
         )}
+
+        <MoveToWorkspaceMenu
+          currentWorkspaceId={note.workspaceId}
+          workspaces={workspaces}
+          onMove={onMove}
+          open={moveMenuOpen}
+          onOpenChange={setMoveMenuOpen}
+        />
 
         <button
           onClick={(e) => {

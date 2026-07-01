@@ -3,7 +3,7 @@ import { Plus, LayoutGrid, StickyNote } from "lucide-react";
 import { TerminalCanvas } from "./TerminalCanvas";
 import { useCanvasLayout, tileRects } from "../../hooks/useCanvasLayout";
 import type { Pane } from "../../types/pane";
-import type { TerminalStatus } from "../../types/terminal";
+import type { TerminalStatus, Workspace } from "../../types/terminal";
 
 interface TerminalGridProps {
   panes: Pane[];
@@ -16,6 +16,8 @@ interface TerminalGridProps {
   onExit: (id: string, code: number | null) => void;
   onNewTerminal: () => void;
   onNewNote: () => void;
+  workspaces: Workspace[];
+  onMovePane: (id: string, workspaceId: string) => void;
 }
 
 /**
@@ -36,6 +38,8 @@ export function TerminalGrid({
   onExit,
   onNewTerminal,
   onNewNote,
+  workspaces,
+  onMovePane,
 }: TerminalGridProps) {
   const ids = useMemo(() => panes.map((p) => p.id), [panes]);
   const { layout, setRect, setAll } = useCanvasLayout(ids);
@@ -154,6 +158,8 @@ export function TerminalGrid({
         onSessionRename={onSessionRename}
         onStatusChange={onStatusChange}
         onExit={onExit}
+        workspaces={workspaces}
+        onMovePane={onMovePane}
       />
     </div>
   );

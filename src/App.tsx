@@ -29,6 +29,7 @@ export function App() {
     spawn,
     kill,
     rename,
+    moveTerminal,
     updateStatus,
     restorePrompt,
     recover,
@@ -45,6 +46,7 @@ export function App() {
     notes,
     addNote,
     renameNote,
+    moveNote,
     removeNote,
     reassignNotes,
     discardNotes,
@@ -109,6 +111,14 @@ export function App() {
       else rename(id, label);
     },
     [notes, renameNote, rename]
+  );
+
+  const movePane = useCallback(
+    (id: string, workspaceId: string) => {
+      if (notes.some((n) => n.id === id)) moveNote(id, workspaceId);
+      else moveTerminal(id, workspaceId);
+    },
+    [notes, moveNote, moveTerminal]
   );
 
   // Keyboard shortcuts
@@ -366,6 +376,8 @@ export function App() {
                     onExit={handleExit}
                     onNewTerminal={() => handleNewTerminal(ws.id)}
                     onNewNote={() => handleNewNote(ws.id)}
+                    workspaces={workspaces}
+                    onMovePane={movePane}
                   />
                 </div>
               );
