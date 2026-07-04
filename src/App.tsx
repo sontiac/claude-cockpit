@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import type { CSSProperties } from "react";
+import { getCurrentWindow, getAllWindows } from "@tauri-apps/api/window";
 import { TitleBar } from "./components/layout/TitleBar";
 import { Sidebar } from "./components/layout/Sidebar";
 import { StatusBar } from "./components/layout/StatusBar";
@@ -13,8 +14,9 @@ import { useProjects } from "./hooks/useProjects";
 import { useFontSizeController, FontSizeContext } from "./hooks/useFontSize";
 import { useNotifications } from "./hooks/useNotifications";
 import { useSounds } from "./hooks/useSounds";
-import { setSessionTitle, openWindow, cycleWindow } from "./lib/ipc";
+import { setSessionTitle, openWindow, cycleWindow, quitApp } from "./lib/ipc";
 import { sessionIdFromCommand } from "./lib/restore";
+import { closeConfirmMessage } from "./lib/windowClose";
 import { DEFAULT_COMMAND } from "./lib/constants";
 import { useTheme } from "./hooks/useTheme";
 import type { Project } from "./types/project";
@@ -34,6 +36,7 @@ export function App() {
     restorePrompt,
     recover,
     discard,
+    forgetWindowTerminals,
     workspaces,
     activeWorkspaceId,
     switchWorkspace,
@@ -50,6 +53,7 @@ export function App() {
     removeNote,
     reassignNotes,
     discardNotes,
+    forgetWindowNotes,
   } = useNotes();
 
   const {
@@ -285,6 +289,34 @@ export function App() {
     await Promise.all([discard(), discardNotes()]);
   }, [discard, discardNotes]);
 
+  // Title-bar ✕: close only THIS window when others are open (confirming first
+  // if it holds terminals or notes, since closing forgets them). When it's the
+  // last window, quit the whole app (recoverable via the restore prompt).
+  const handleCloseWindow = useCallback(async () => {
+    let windowCount = 1;
+    try {
+      windowCount = (await getAllWindows()).length;
+    } catch (e) {
+      console.error("Failed to count windows:", e);
+    }
+
+    if (windowCount <= 1) {
+      await quitApp().catch((e) => console.error("Failed to quit:", e));
+      return;
+    }
+
+    const confirmMsg = closeConfirmMessage(terminals.length, notes.length);
+    if (confirmMsg && !window.confirm(confirmMsg)) return;
+
+    // Order matters: kill/forget this window's terminals and notes (both disarm
+    // their persistence) before destroying the window, so nothing re-saves.
+    await forgetWindowTerminals();
+    await forgetWindowNotes();
+    await getCurrentWindow()
+      .destroy()
+      .catch((e) => console.error("Failed to close window:", e));
+  }, [terminals.length, notes.length, forgetWindowTerminals, forgetWindowNotes]);
+
   const handleDeleteWorkspace = useCallback(
     (id: string) => {
       const remaining = workspaces.filter((w) => w.id !== id);
@@ -304,7 +336,7 @@ export function App() {
       style={{ "--scrim": theme.scrim } as CSSProperties}
     />
     <div className="flex flex-col h-screen bg-transparent">
-      <TitleBar />
+      <TitleBar onClose={handleCloseWindow} />
 
       <div className="flex flex-1 min-h-0">
         <Sidebar

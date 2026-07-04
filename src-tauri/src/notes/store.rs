@@ -77,6 +77,14 @@ pub fn save_window_notes(
     Ok(())
 }
 
+/// Remove one window's note-pane list (its content files are deleted separately,
+/// keyed by note id). Used when a window is deliberately closed and forgotten.
+pub fn remove_window_notes(label: &str) {
+    if let Some(path) = window_file(label) {
+        fs::remove_file(path).ok();
+    }
+}
+
 pub fn get_note_content(id: &str) -> Option<serde_json::Value> {
     let path = content_file(id)?;
     let data = fs::read_to_string(&path).ok()?;

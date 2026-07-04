@@ -10,6 +10,7 @@ const ipc = vi.hoisted(() => ({
   getWindowNotes: vi.fn(async () => [] as any[]),
   saveWindowNotes: vi.fn(async () => {}),
   removeNoteContent: vi.fn(async () => {}),
+  removeWindowNotes: vi.fn(async () => {}),
   clearNotes: vi.fn(async () => {}),
 }));
 vi.mock("../lib/ipc", () => ipc);
@@ -115,5 +116,29 @@ describe("useNotes", () => {
     });
     expect(result.current.notes).toHaveLength(0);
     expect(ipc.clearNotes).toHaveBeenCalled();
+  });
+
+  it("forgetWindowNotes deletes each note's content + this window's file, without re-saving", async () => {
+    ipc.getWindowNotes.mockResolvedValue([
+      { id: "n-1", label: "A", color: "#abc", workspace_id: "ws-1" },
+      { id: "n-2", label: "B", color: "#abc", workspace_id: "ws-1" },
+    ]);
+    const { result } = renderHook(() => useNotes());
+    await waitFor(() => expect(result.current.notes).toHaveLength(2));
+    ipc.saveWindowNotes.mockClear();
+
+    await act(async () => {
+      await result.current.forgetWindowNotes();
+    });
+
+    // Every note's durable content file is deleted.
+    expect(ipc.removeNoteContent).toHaveBeenCalledWith("n-1");
+    expect(ipc.removeNoteContent).toHaveBeenCalledWith("n-2");
+    // This window's pane-list file is removed (label from the mocked window).
+    expect(ipc.removeWindowNotes).toHaveBeenCalledWith("main");
+    // Local state cleared, and the closing guard prevented a re-save that would
+    // resurrect the file we just removed.
+    expect(result.current.notes).toHaveLength(0);
+    expect(ipc.saveWindowNotes).not.toHaveBeenCalled();
   });
 });

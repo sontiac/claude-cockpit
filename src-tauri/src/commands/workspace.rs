@@ -21,6 +21,14 @@ pub fn clear_session() -> Result<(), CockpitError> {
     store::clear_session()
 }
 
+/// Forget one window's saved session so a deliberately-closed window is not
+/// offered for recovery on next launch.
+#[tauri::command]
+pub fn remove_window_state(label: String) -> Result<(), CockpitError> {
+    store::remove_window_state(&label);
+    Ok(())
+}
+
 #[tauri::command]
 pub fn set_session_title(session_id: String, title: String) -> Result<(), CockpitError> {
     store::set_session_title(session_id, title)

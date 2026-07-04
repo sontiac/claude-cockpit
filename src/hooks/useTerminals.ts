@@ -5,6 +5,7 @@ import {
   ptyKill,
   getWindowState,
   saveWindowState,
+  removeWindowState,
   listSessionLabels,
   clearSession,
   openWindow,
@@ -78,6 +79,9 @@ export function useTerminals() {
   // or the initial state has loaded (secondary windows), so the empty initial
   // state can't overwrite the saved session.
   const [persistArmed, setPersistArmed] = useState(false);
+  // Set while this window is being closed/forgotten, so the persist effect
+  // doesn't re-create the session file we just removed.
+  const closingRef = useRef(false);
   // Bumped when the window is moved/resized, to re-persist fresh geometry.
   const [geometryVersion, setGeometryVersion] = useState(0);
 
@@ -346,9 +350,28 @@ export function useTerminals() {
     setPersistArmed(true);
   }, []);
 
+  // Forget this window's terminals when the window is deliberately closed: kill
+  // its PTY children (they live in a global backend map, so the frontend — which
+  // knows which terminals are this window's — must drive the kill), then remove
+  // this window's saved session so it isn't offered for recovery next launch.
+  // Guards persistence first so nothing re-saves the file we removed.
+  const forgetWindowTerminals = useCallback(async () => {
+    closingRef.current = true;
+    await Promise.all(
+      terminals.map((t) =>
+        ptyKill(t.id).catch(() => {
+          /* already dead */
+        })
+      )
+    );
+    await removeWindowState(WINDOW_LABEL).catch((e) =>
+      console.error("Failed to remove window state:", e)
+    );
+  }, [terminals]);
+
   // --- Persist this window's state (all windows, once armed) --------------
   useEffect(() => {
-    if (!persistArmed) return;
+    if (!persistArmed || closingRef.current) return;
     let cancelled = false;
     currentGeometry().then((geometry) => {
       if (cancelled) return;
@@ -399,6 +422,7 @@ export function useTerminals() {
     restorePrompt,
     recover,
     discard,
+    forgetWindowTerminals,
     workspaces,
     activeWorkspaceId,
     switchWorkspace,

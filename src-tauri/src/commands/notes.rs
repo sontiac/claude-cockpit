@@ -28,6 +28,12 @@ pub fn remove_note_content(id: String) -> Result<(), CockpitError> {
 }
 
 #[tauri::command]
+pub fn remove_window_notes(label: String) -> Result<(), CockpitError> {
+    store::remove_window_notes(&label);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn clear_notes() -> Result<(), CockpitError> {
     store::clear_notes()
 }

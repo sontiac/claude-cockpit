@@ -95,6 +95,11 @@ export const saveWindowState = (label: string, state: WindowState) =>
 export const listSessionLabels = () =>
   invoke<string[]>("list_session_labels");
 
+/** Forget one window's saved session (so a deliberately-closed window is not
+ *  offered for recovery next launch). */
+export const removeWindowState = (label: string) =>
+  invoke<void>("remove_window_state", { label });
+
 /** Discard the entire saved session (all windows). */
 export const clearSession = () => invoke<void>("clear_session");
 
@@ -131,6 +136,12 @@ export const removeNoteContent = (id: string) => {
 };
 
 export const clearNotes = () => invoke<void>("clear_notes");
+
+/** Remove one window's note-pane list (used when a window is closed and
+ *  forgotten; the notes' content files are deleted separately via
+ *  removeNoteContent). */
+export const removeWindowNotes = (label: string) =>
+  invoke<void>("remove_window_notes", { label });
 
 export const setSessionTitle = (sessionId: string, title: string) =>
   invoke<void>("set_session_title", { sessionId, title });

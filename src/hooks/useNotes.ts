@@ -1,9 +1,10 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   getWindowNotes,
   saveWindowNotes,
   removeNoteContent,
+  removeWindowNotes,
   clearNotes,
 } from "../lib/ipc";
 import { generateId } from "../lib/utils";
@@ -41,6 +42,9 @@ export function useNotes() {
   // Disarm persistence until the initial load completes, so the empty initial
   // state can't overwrite the saved file.
   const [loaded, setLoaded] = useState(false);
+  // Set while this window is being closed/forgotten, so the persist effect
+  // doesn't re-create the note file we just removed.
+  const closingRef = useRef(false);
 
   const addNote = useCallback((workspaceId: string): NotePane => {
     const note: NotePane = {
@@ -90,6 +94,24 @@ export function useNotes() {
     );
   }, []);
 
+  // Forget this window's notes when the window is deliberately closed: delete
+  // every note's content file, then remove this window's pane-list file. Guards
+  // persistence first so the subsequent empty state can't re-save the file.
+  const forgetWindowNotes = useCallback(async () => {
+    closingRef.current = true;
+    await Promise.all(
+      notes.map((n) =>
+        removeNoteContent(n.id).catch((e) =>
+          console.error("Failed to remove note content:", e)
+        )
+      )
+    );
+    await removeWindowNotes(WINDOW_LABEL).catch((e) =>
+      console.error("Failed to remove window notes:", e)
+    );
+    setNotes([]);
+  }, [notes]);
+
   // Load this window's saved notes on mount, then arm persistence.
   useEffect(() => {
     (async () => {
@@ -104,9 +126,9 @@ export function useNotes() {
     })();
   }, []);
 
-  // Persist whenever notes change, once armed.
+  // Persist whenever notes change, once armed (and not while closing).
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || closingRef.current) return;
     saveWindowNotes(WINDOW_LABEL, notes.map(toPersisted)).catch((e) =>
       console.error("Failed to persist notes:", e)
     );
@@ -120,5 +142,6 @@ export function useNotes() {
     removeNote,
     reassignNotes,
     discardNotes,
+    forgetWindowNotes,
   };
 }
