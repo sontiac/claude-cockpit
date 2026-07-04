@@ -293,14 +293,17 @@ export function App() {
   // if it holds terminals or notes, since closing forgets them). When it's the
   // last window, quit the whole app (recoverable via the restore prompt).
   const handleCloseWindow = useCallback(async () => {
-    let windowCount = 1;
+    // Only quit the whole app when we can CONFIRM this is the last window. If the
+    // window count can't be read, fail safe by closing just this window rather
+    // than quitting every other open window (the original bug's failure mode).
+    let windowCount: number | null = null;
     try {
       windowCount = (await getAllWindows()).length;
     } catch (e) {
-      console.error("Failed to count windows:", e);
+      console.error("Failed to count windows; closing just this window:", e);
     }
 
-    if (windowCount <= 1) {
+    if (windowCount === 1) {
       await quitApp().catch((e) => console.error("Failed to quit:", e));
       return;
     }
