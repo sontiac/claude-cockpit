@@ -1,13 +1,13 @@
 use crate::error::CockpitError;
-use crate::notes::store::{self, PersistedNote};
+use crate::notes::store::{self, PersistedPane};
 
 #[tauri::command]
-pub fn get_window_notes(label: String) -> Result<Vec<PersistedNote>, CockpitError> {
+pub fn get_window_notes(label: String) -> Result<Vec<PersistedPane>, CockpitError> {
     Ok(store::get_window_notes(&label))
 }
 
 #[tauri::command]
-pub fn save_window_notes(label: String, notes: Vec<PersistedNote>) -> Result<(), CockpitError> {
+pub fn save_window_notes(label: String, notes: Vec<PersistedPane>) -> Result<(), CockpitError> {
     store::save_window_notes(&label, &notes)
 }
 

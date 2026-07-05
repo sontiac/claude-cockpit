@@ -2,15 +2,33 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-/// A persisted note pane: enough to recreate the window on next launch. The text
-/// content lives separately (content file keyed by id), never here.
+fn default_kind() -> String {
+    "note".into()
+}
+
+/// A persisted canvas pane: enough to recreate the window on next launch.
+/// Note text content lives separately (content file keyed by id), never here.
+/// `kind` selects the pane type; per-kind config rides along as optional
+/// fields the store never interprets. Files written before panes had kinds
+/// deserialize as notes via the `kind` default.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PersistedNote {
+pub struct PersistedPane {
     pub id: String,
     pub label: String,
     pub color: String,
     #[serde(default)]
     pub workspace_id: Option<String>,
+    #[serde(default = "default_kind")]
+    pub kind: String,
+    /// mdviewer: absolute path of the markdown file being viewed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// pomodoro: focus duration in minutes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_minutes: Option<u32>,
+    /// pomodoro: break duration in minutes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub break_minutes: Option<u32>,
 }
 
 fn base_dir() -> PathBuf {
@@ -57,7 +75,7 @@ fn content_file(id: &str) -> Option<PathBuf> {
     Some(content_dir().join(format!("{id}.json")))
 }
 
-pub fn get_window_notes(label: &str) -> Vec<PersistedNote> {
+pub fn get_window_notes(label: &str) -> Vec<PersistedPane> {
     let Some(path) = window_file(label) else {
         return Vec::new();
     };
@@ -69,7 +87,7 @@ pub fn get_window_notes(label: &str) -> Vec<PersistedNote> {
 
 pub fn save_window_notes(
     label: &str,
-    notes: &[PersistedNote],
+    notes: &[PersistedPane],
 ) -> Result<(), crate::error::CockpitError> {
     let path = window_file(label)
         .ok_or_else(|| crate::error::CockpitError::InvalidInput("Bad window label".into()))?;
@@ -123,13 +141,57 @@ pub fn clear_notes() -> Result<(), crate::error::CockpitError> {
 mod tests {
     use super::*;
 
-    fn note(id: &str) -> PersistedNote {
-        PersistedNote {
+    fn note(id: &str) -> PersistedPane {
+        PersistedPane {
             id: id.into(),
             label: "Note".into(),
             color: "#fff".into(),
             workspace_id: Some("ws-1".into()),
+            kind: "note".into(),
+            path: None,
+            work_minutes: None,
+            break_minutes: None,
         }
+    }
+
+    #[test]
+    fn legacy_note_json_defaults_to_note_kind() {
+        let json = r##"[{"id":"n-1","label":"Todo","color":"#abc","workspace_id":"ws-9"}]"##;
+        let panes: Vec<PersistedPane> = serde_json::from_str(json).unwrap();
+        assert_eq!(panes[0].kind, "note");
+        assert_eq!(panes[0].path, None);
+        assert_eq!(panes[0].work_minutes, None);
+    }
+
+    #[test]
+    fn pane_kinds_round_trip() {
+        let label = "test-window-kinds";
+        let panes = vec![
+            note("n-1"),
+            PersistedPane {
+                id: "v-1".into(),
+                label: "Plan".into(),
+                color: "#0af".into(),
+                workspace_id: Some("ws-1".into()),
+                kind: "mdviewer".into(),
+                path: Some("/tmp/plan.md".into()),
+                work_minutes: None,
+                break_minutes: None,
+            },
+            PersistedPane {
+                id: "p-1".into(),
+                label: "Pomodoro".into(),
+                color: "#f80".into(),
+                workspace_id: Some("ws-1".into()),
+                kind: "pomodoro".into(),
+                path: None,
+                work_minutes: Some(25),
+                break_minutes: Some(5),
+            },
+        ];
+        save_window_notes(label, &panes).unwrap();
+        assert_eq!(get_window_notes(label), panes);
+        fs::remove_file(window_file(label).unwrap()).ok();
     }
 
     #[test]
