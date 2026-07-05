@@ -89,6 +89,50 @@ describe("useMarkdownFile", () => {
     expect(result.current).toEqual({ content: "# back", error: null });
   });
 
+  it("skips poll ticks while a previous poll is still in flight", async () => {
+    const { result } = renderHook(() => useMarkdownFile("/tmp/plan.md"));
+    await flush();
+    expect(ipc.readTextFile).toHaveBeenCalledTimes(1);
+
+    // The next stat hangs, outliving the poll interval.
+    let resolveStat!: (mtime: number) => void;
+    ipc.statFile.mockImplementationOnce(
+      () =>
+        new Promise<number>((resolve) => {
+          resolveStat = resolve;
+        })
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000); // starts the hanging stat
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000); // tick fires while it's in flight
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000); // and again
+    });
+    // Only the hanging call was issued; the overlapping ticks were skipped.
+    expect(ipc.statFile).toHaveBeenCalledTimes(1);
+    expect(ipc.readTextFile).toHaveBeenCalledTimes(1);
+
+    // The slow stat finally resolves with a new mtime: the file is re-read.
+    ipc.statFile.mockResolvedValue(200);
+    ipc.readTextFile.mockResolvedValue({ content: "# two", mtime_ms: 200 });
+    await act(async () => {
+      resolveStat(200);
+    });
+    await flush();
+    expect(ipc.readTextFile).toHaveBeenCalledTimes(2);
+    expect(result.current.content).toBe("# two");
+
+    // Polling resumes normally after the in-flight work completes.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(ipc.statFile).toHaveBeenCalledTimes(2);
+  });
+
   it("surfaces an initial load failure as an error with no content", async () => {
     ipc.readTextFile.mockRejectedValue(new Error("No such file"));
     const { result } = renderHook(() => useMarkdownFile("/tmp/missing.md"));

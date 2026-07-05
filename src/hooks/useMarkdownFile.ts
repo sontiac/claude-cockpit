@@ -26,6 +26,10 @@ export function useMarkdownFile(path: string | null): MarkdownFileState {
 
     let cancelled = false;
     let mtime = 0;
+    // Guards against overlapping ticks: if a stat/read outlives the poll
+    // interval, later ticks are skipped instead of racing it — a slow stale
+    // response must never overwrite a fresher one.
+    let inFlight = false;
 
     const load = async () => {
       try {
@@ -39,15 +43,23 @@ export function useMarkdownFile(path: string | null): MarkdownFileState {
       }
     };
 
-    load();
+    inFlight = true;
+    load().finally(() => {
+      inFlight = false;
+    });
+
     const timer = setInterval(async () => {
+      if (inFlight) return;
+      inFlight = true;
       try {
         const current = await statFile(path);
-        if (cancelled || current === mtime) return;
-        await load();
+        if (!cancelled && current !== mtime) await load();
       } catch (e) {
-        if (cancelled) return;
-        setState((prev) => ({ content: prev.content, error: String(e) }));
+        if (!cancelled) {
+          setState((prev) => ({ content: prev.content, error: String(e) }));
+        }
+      } finally {
+        inFlight = false;
       }
     }, POLL_MS);
 
