@@ -135,9 +135,10 @@ type Pane = ({ kind: "terminal" } & TerminalInfo) | CanvasPane;
 - **Color**: work ring in green `#10b981`, break ring in the app cyan; ring
   drains as time elapses.
 - **Completion**: on phase end, play a sound via the existing `useSounds` and
-  route through the existing attention/notification path so an unattended
-  workspace tab lights up; auto-advances to the next phase but paused (user
-  starts the break — no surprise timers).
+  send an OS notification via the existing `useNotifications` (there is no
+  in-app attention system to hook — the workspace-tab attention markers from a
+  past design were never merged); auto-advances to the next phase but paused
+  (user starts the break — no surprise timers).
 - **State**: countdown runs off a stored `endsAt` timestamp (survives re-render
   and workspace switches; interval only ticks the display). Runtime-only —
   restarting the app resets the timer; durations persist via Part 2.
