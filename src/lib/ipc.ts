@@ -158,6 +158,16 @@ export const browseDirectory = (path: string) =>
 
 export const getHomeDir = () => invoke<string>("get_home_dir");
 
+export interface TextFile {
+  content: string;
+  mtime_ms: number;
+}
+
+export const statFile = (path: string) => invoke<number>("stat_file", { path });
+
+export const readTextFile = (path: string) =>
+  invoke<TextFile>("read_text_file", { path });
+
 // Custom background images (user uploads)
 export interface BackgroundInfo {
   id: string;
