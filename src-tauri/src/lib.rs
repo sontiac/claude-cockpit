@@ -66,6 +66,8 @@ pub fn run() {
             commands::stats::get_player_stats,
             commands::system::browse_directory,
             commands::system::get_home_dir,
+            commands::system::stat_file,
+            commands::system::read_text_file,
             commands::background::list_backgrounds,
             commands::background::import_background,
             commands::background::delete_background,
