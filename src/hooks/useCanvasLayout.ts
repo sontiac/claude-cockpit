@@ -35,6 +35,12 @@ function seedRect(index: number): Rect {
  * arrange/tidy presets apply — windows snap into a neat grid but remain freely
  * draggable/resizable afterward. Pass `cols = 0` for an automatic square-ish
  * grid (ceil(sqrt(n)) columns).
+ *
+ * Cells are clamped to MIN_W/MIN_H so tiled panes stay usable. When the viewport
+ * is too small to fit the whole grid at that minimum, the grid overflows the
+ * surface (which scrolls) rather than shrinking below the minimum — crucially,
+ * position spacing uses the *same clamped* cell size as the width/height, so
+ * clamped panes never overlap.
  */
 export function tileRects(
   ids: string[],
@@ -51,8 +57,14 @@ export function tileRects(
   );
   const rows = Math.ceil(n / columns);
 
-  const cellW = (viewportW - 2 * MARGIN - (columns - 1) * GAP) / columns;
-  const cellH = (viewportH - 2 * MARGIN - (rows - 1) * GAP) / rows;
+  const cellW = Math.max(
+    MIN_W,
+    (viewportW - 2 * MARGIN - (columns - 1) * GAP) / columns
+  );
+  const cellH = Math.max(
+    MIN_H,
+    (viewportH - 2 * MARGIN - (rows - 1) * GAP) / rows
+  );
 
   const rects: Record<string, Rect> = {};
   ids.forEach((id, i) => {
@@ -61,8 +73,8 @@ export function tileRects(
     rects[id] = {
       x: MARGIN + col * (cellW + GAP),
       y: MARGIN + row * (cellH + GAP),
-      w: Math.max(MIN_W, cellW),
-      h: Math.max(MIN_H, cellH),
+      w: cellW,
+      h: cellH,
     };
   });
   return rects;

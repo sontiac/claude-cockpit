@@ -58,6 +58,11 @@ export function TerminalGrid({
       const h = surface.clientHeight;
       if (w === 0 || h === 0) return;
       setAll(tileRects(ids, cols, w, h));
+      // Tiling lays panes out from the surface's top-left (x/y start at MARGIN).
+      // If the surface was scrolled — e.g. a pane had been dragged far out —
+      // reset scroll to the origin so the arranged panes are actually in view
+      // rather than clipped off to the left/top behind the sidebar.
+      surface.scrollTo({ left: 0, top: 0 });
     },
     [ids, setAll]
   );
