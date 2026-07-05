@@ -6,7 +6,7 @@ interface WorkspaceBarProps {
   workspaces: Workspace[];
   activeId: string;
   counts: Record<string, number>;
-  noteCounts: Record<string, number>;
+  paneCounts: Record<string, number>;
   onSwitch: (id: string) => void;
   onCreate: () => void;
   onRename: (id: string, name: string) => void;
@@ -23,7 +23,7 @@ export function WorkspaceBar({
   workspaces,
   activeId,
   counts,
-  noteCounts,
+  paneCounts,
   onSwitch,
   onCreate,
   onRename,
@@ -86,13 +86,13 @@ export function WorkspaceBar({
                 {count}
               </span>
             )}
-            {(noteCounts[ws.id] ?? 0) > 0 && (
+            {(paneCounts[ws.id] ?? 0) > 0 && (
               <span
                 className="ml-1 inline-flex items-center gap-0.5 text-[10px] text-foreground-muted"
-                title={`${noteCounts[ws.id]} note${noteCounts[ws.id] !== 1 ? "s" : ""}`}
+                title={`${paneCounts[ws.id]} pane${paneCounts[ws.id] !== 1 ? "s" : ""}`}
               >
                 <StickyNote size={9} />
-                {noteCounts[ws.id]}
+                {paneCounts[ws.id]}
               </span>
             )}
             {workspaces.length > 1 && (

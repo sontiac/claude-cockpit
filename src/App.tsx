@@ -9,7 +9,7 @@ import { TerminalGrid } from "./components/terminal/TerminalGrid";
 import { RestoreModal } from "./components/terminal/RestoreModal";
 import { AddProjectModal } from "./components/project/AddProjectModal";
 import { useTerminals } from "./hooks/useTerminals";
-import { useNotes } from "./hooks/useNotes";
+import { usePanes } from "./hooks/usePanes";
 import { useProjects } from "./hooks/useProjects";
 import { useFontSizeController, FontSizeContext } from "./hooks/useFontSize";
 import { useNotifications } from "./hooks/useNotifications";
@@ -21,7 +21,7 @@ import { DEFAULT_COMMAND } from "./lib/constants";
 import { useTheme } from "./hooks/useTheme";
 import type { Project } from "./types/project";
 import type { TerminalStatus } from "./types/terminal";
-import type { Pane } from "./types/pane";
+import type { Pane, CanvasPaneKind } from "./types/pane";
 
 export function App() {
   const {
@@ -46,15 +46,17 @@ export function App() {
   } = useTerminals();
 
   const {
-    notes,
-    addNote,
-    renameNote,
-    moveNote,
-    removeNote,
-    reassignNotes,
-    discardNotes,
-    forgetWindowNotes,
-  } = useNotes();
+    panes,
+    addPane,
+    renamePane: renameCanvasPane,
+    movePane: moveCanvasPane,
+    removePane,
+    reassignPanes,
+    discardPanes,
+    forgetWindowPanes,
+    setPanePath,
+    setPomodoroDurations,
+  } = usePanes();
 
   const {
     projects,
@@ -80,49 +82,51 @@ export function App() {
     [spawn]
   );
 
-  const handleNewNote = useCallback(
-    (workspaceId?: string) => {
-      const note = addNote(workspaceId ?? activeWorkspaceId);
-      setActiveId(note.id);
+  const handleNewPane = useCallback(
+    (kind: CanvasPaneKind, workspaceId?: string) => {
+      const pane = addPane(kind, workspaceId ?? activeWorkspaceId);
+      setActiveId(pane.id);
       play("launch");
     },
-    [addNote, activeWorkspaceId, setActiveId, play]
+    [addPane, activeWorkspaceId, setActiveId, play]
   );
 
   const closePane = useCallback(
     (id: string) => {
-      const note = notes.find((n) => n.id === id);
-      if (note) {
+      const pane = panes.find((p) => p.id === id);
+      if (pane) {
         if (
-          window.confirm(
-            `Delete note "${note.label}"? Its contents will be permanently removed.`
+          pane.kind === "note" &&
+          !window.confirm(
+            `Delete note "${pane.label}"? Its contents will be permanently removed.`
           )
         ) {
-          removeNote(id);
-          if (activeId === id) setActiveId(null);
-          play("click");
+          return;
         }
+        removePane(id);
+        if (activeId === id) setActiveId(null);
+        play("click");
         return;
       }
       kill(id);
     },
-    [notes, removeNote, kill, activeId, setActiveId, play]
+    [panes, removePane, kill, activeId, setActiveId, play]
   );
 
   const renamePane = useCallback(
     (id: string, label: string) => {
-      if (notes.some((n) => n.id === id)) renameNote(id, label);
+      if (panes.some((p) => p.id === id)) renameCanvasPane(id, label);
       else rename(id, label);
     },
-    [notes, renameNote, rename]
+    [panes, renameCanvasPane, rename]
   );
 
   const movePane = useCallback(
     (id: string, workspaceId: string) => {
-      if (notes.some((n) => n.id === id)) moveNote(id, workspaceId);
+      if (panes.some((p) => p.id === id)) moveCanvasPane(id, workspaceId);
       else moveTerminal(id, workspaceId);
     },
-    [notes, moveNote, moveTerminal]
+    [panes, moveCanvasPane, moveTerminal]
   );
 
   // Keyboard shortcuts
@@ -139,7 +143,7 @@ export function App() {
       if (e.metaKey || e.ctrlKey) {
         if (e.key.toLowerCase() === "n" && e.shiftKey) {
           e.preventDefault();
-          handleNewNote();
+          handleNewPane("note");
           return;
         }
         if (e.key === "t") {
@@ -184,7 +188,7 @@ export function App() {
     decrease,
     reset,
     handleNewTerminal,
-    handleNewNote,
+    handleNewPane,
     closePane,
   ]);
 
@@ -197,13 +201,13 @@ export function App() {
     return counts;
   }, [terminals]);
 
-  const workspaceNoteCounts = useMemo(() => {
+  const workspacePaneCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const n of notes) {
-      counts[n.workspaceId] = (counts[n.workspaceId] ?? 0) + 1;
+    for (const p of panes) {
+      counts[p.workspaceId] = (counts[p.workspaceId] ?? 0) + 1;
     }
     return counts;
-  }, [notes]);
+  }, [panes]);
 
   const handleLaunchProject = useCallback(
     async (project: Project) => {
@@ -286,11 +290,11 @@ export function App() {
   );
 
   const handleDiscard = useCallback(async () => {
-    await Promise.all([discard(), discardNotes()]);
-  }, [discard, discardNotes]);
+    await Promise.all([discard(), discardPanes()]);
+  }, [discard, discardPanes]);
 
   // Title-bar ✕: close only THIS window when others are open (confirming first
-  // if it holds terminals or notes, since closing forgets them). When it's the
+  // if it holds terminals or panes, since closing forgets them). When it's the
   // last window, quit the whole app (recoverable via the restore prompt).
   const handleCloseWindow = useCallback(async () => {
     // Only quit the whole app when we can CONFIRM this is the last window. If the
@@ -308,26 +312,26 @@ export function App() {
       return;
     }
 
-    const confirmMsg = closeConfirmMessage(terminals.length, notes.length);
+    const confirmMsg = closeConfirmMessage(terminals.length, panes.length);
     if (confirmMsg && !window.confirm(confirmMsg)) return;
 
-    // Order matters: kill/forget this window's terminals and notes (both disarm
+    // Order matters: kill/forget this window's terminals and panes (both disarm
     // their persistence) before destroying the window, so nothing re-saves.
     await forgetWindowTerminals();
-    await forgetWindowNotes();
+    await forgetWindowPanes();
     await getCurrentWindow()
       .destroy()
       .catch((e) => console.error("Failed to close window:", e));
-  }, [terminals.length, notes.length, forgetWindowTerminals, forgetWindowNotes]);
+  }, [terminals.length, panes.length, forgetWindowTerminals, forgetWindowPanes]);
 
   const handleDeleteWorkspace = useCallback(
     (id: string) => {
       const remaining = workspaces.filter((w) => w.id !== id);
       if (remaining.length === 0) return; // mirror deleteWorkspace's guard
-      reassignNotes(id, remaining[0].id);
+      reassignPanes(id, remaining[0].id);
       deleteWorkspace(id);
     },
-    [workspaces, reassignNotes, deleteWorkspace]
+    [workspaces, reassignPanes, deleteWorkspace]
   );
 
   return (
@@ -359,7 +363,7 @@ export function App() {
           }}
           onReorderProjects={reorderProjects}
           onNewTerminal={() => handleNewTerminal()}
-          onNewNote={() => handleNewNote()}
+          onNewNote={() => handleNewPane("note")}
           onResumeSession={handleResumeSession}
         />
 
@@ -368,7 +372,7 @@ export function App() {
             workspaces={workspaces}
             activeId={activeWorkspaceId}
             counts={workspaceCounts}
-            noteCounts={workspaceNoteCounts}
+            paneCounts={workspacePaneCounts}
             onSwitch={switchWorkspace}
             onCreate={createWorkspace}
             onRename={renameWorkspace}
@@ -386,9 +390,7 @@ export function App() {
                 ...terminals
                   .filter((t) => t.workspaceId === ws.id)
                   .map((t) => ({ kind: "terminal" as const, ...t })),
-                ...notes
-                  .filter((n) => n.workspaceId === ws.id)
-                  .map((n) => ({ kind: "note" as const, ...n })),
+                ...panes.filter((p) => p.workspaceId === ws.id),
               ];
               return (
                 <div
@@ -410,7 +412,9 @@ export function App() {
                     onStatusChange={handleStatusChange}
                     onExit={handleExit}
                     onNewTerminal={() => handleNewTerminal(ws.id)}
-                    onNewNote={() => handleNewNote(ws.id)}
+                    onNewPane={(kind) => handleNewPane(kind, ws.id)}
+                    onSetPanePath={setPanePath}
+                    onSetPomodoroDurations={setPomodoroDurations}
                     workspaces={workspaces}
                     onMovePane={movePane}
                   />

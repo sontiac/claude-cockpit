@@ -2,7 +2,7 @@ import { useMemo, useRef, useCallback } from "react";
 import { Plus, LayoutGrid, StickyNote, Columns3 } from "lucide-react";
 import { TerminalCanvas } from "./TerminalCanvas";
 import { useCanvasLayout, tileRects } from "../../hooks/useCanvasLayout";
-import type { Pane } from "../../types/pane";
+import type { CanvasPaneKind, Pane } from "../../types/pane";
 import type { TerminalStatus, Workspace } from "../../types/terminal";
 
 interface TerminalGridProps {
@@ -15,7 +15,9 @@ interface TerminalGridProps {
   onStatusChange: (id: string, status: TerminalStatus) => void;
   onExit: (id: string, code: number | null) => void;
   onNewTerminal: () => void;
-  onNewNote: () => void;
+  onNewPane: (kind: CanvasPaneKind) => void;
+  onSetPanePath: (id: string, path: string | null) => void;
+  onSetPomodoroDurations: (id: string, workMinutes: number, breakMinutes: number) => void;
   workspaces: Workspace[];
   onMovePane: (id: string, workspaceId: string) => void;
 }
@@ -37,16 +39,15 @@ export function TerminalGrid({
   onStatusChange,
   onExit,
   onNewTerminal,
-  onNewNote,
+  onNewPane,
+  onSetPanePath,
+  onSetPomodoroDurations,
   workspaces,
   onMovePane,
 }: TerminalGridProps) {
   const ids = useMemo(() => panes.map((p) => p.id), [panes]);
   const { layout, setRect, setAll } = useCanvasLayout(ids);
   const surfaceRef = useRef<HTMLDivElement>(null);
-
-  const termCount = panes.filter((p) => p.kind === "terminal").length;
-  const noteCount = panes.filter((p) => p.kind === "note").length;
 
   // Tile every window into `cols` columns (0 = auto) filling the visible canvas
   // area. Windows remain freely draggable/resizable after arranging.
@@ -81,7 +82,7 @@ export function TerminalGrid({
               New Terminal
             </button>
             <button
-              onClick={onNewNote}
+              onClick={() => onNewPane("note")}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 text-foreground-muted hover:text-foreground hover:bg-white/10 font-medium text-sm"
             >
               <StickyNote size={16} />
@@ -96,10 +97,17 @@ export function TerminalGrid({
   const colButtonClass =
     "w-7 h-7 rounded-md text-xs font-semibold text-foreground-muted hover:text-foreground hover:bg-white/5 transition-colors";
 
+  const termCount = panes.filter((p) => p.kind === "terminal").length;
+  const noteCount = panes.filter((p) => p.kind === "note").length;
+  const viewerCount = panes.filter((p) => p.kind === "mdviewer").length;
+  const timerCount = panes.filter((p) => p.kind === "pomodoro").length;
+
   const countLabel =
     [
       termCount > 0 ? `${termCount} terminal${termCount !== 1 ? "s" : ""}` : "",
       noteCount > 0 ? `${noteCount} note${noteCount !== 1 ? "s" : ""}` : "",
+      viewerCount > 0 ? `${viewerCount} plan${viewerCount !== 1 ? "s" : ""}` : "",
+      timerCount > 0 ? `${timerCount} timer${timerCount !== 1 ? "s" : ""}` : "",
     ]
       .filter(Boolean)
       .join(" · ") || "Empty";
@@ -142,7 +150,7 @@ export function TerminalGrid({
           <div className="w-px h-4 bg-card-border mx-1" />
 
           <button
-            onClick={onNewNote}
+            onClick={() => onNewPane("note")}
             className="p-1.5 rounded-md text-foreground-muted hover:text-foreground hover:bg-white/5"
             title="New note (Cmd+Shift+N)"
           >
@@ -170,6 +178,8 @@ export function TerminalGrid({
         onSessionRename={onSessionRename}
         onStatusChange={onStatusChange}
         onExit={onExit}
+        onSetPanePath={onSetPanePath}
+        onSetPomodoroDurations={onSetPomodoroDurations}
         workspaces={workspaces}
         onMovePane={onMovePane}
       />

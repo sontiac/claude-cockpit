@@ -19,6 +19,8 @@ interface TerminalCanvasProps {
   onSessionRename: (id: string, sessionName: string) => void;
   onStatusChange: (id: string, status: TerminalStatus) => void;
   onExit: (id: string, code: number | null) => void;
+  onSetPanePath: (id: string, path: string | null) => void;
+  onSetPomodoroDurations: (id: string, workMinutes: number, breakMinutes: number) => void;
   workspaces: Workspace[];
   onMovePane: (id: string, workspaceId: string) => void;
 }
@@ -56,6 +58,10 @@ export function TerminalCanvas({
   onSessionRename,
   onStatusChange,
   onExit,
+  // Threaded through for Tasks 10/12 (mdviewer/pomodoro cells), which don't
+  // exist yet — nothing in this file consumes them until those land.
+  onSetPanePath: _onSetPanePath,
+  onSetPomodoroDurations: _onSetPomodoroDurations,
   workspaces,
   onMovePane,
 }: TerminalCanvasProps) {
@@ -166,7 +172,7 @@ export function TerminalCanvas({
                   workspaces={workspaces}
                   onMove={(wsId) => onMovePane(pane.id, wsId)}
                 />
-              ) : (
+              ) : pane.kind === "note" ? (
                 <NoteCell
                   note={pane}
                   isActive={isActive}
@@ -177,7 +183,7 @@ export function TerminalCanvas({
                   workspaces={workspaces}
                   onMove={(wsId) => onMovePane(pane.id, wsId)}
                 />
-              )}
+              ) : null /* mdviewer (Task 10) and pomodoro (Task 12) cells land with their features; nothing can create these kinds until their toolbar buttons exist */}
               {/* Resize handle (bottom-right corner). */}
               <div
                 onPointerDown={(e) => {
