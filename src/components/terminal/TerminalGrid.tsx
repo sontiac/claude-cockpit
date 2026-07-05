@@ -1,5 +1,5 @@
 import { useMemo, useRef, useCallback } from "react";
-import { Plus, LayoutGrid, StickyNote, Columns3 } from "lucide-react";
+import { Plus, LayoutGrid, StickyNote, Columns3, FileText } from "lucide-react";
 import { TerminalCanvas } from "./TerminalCanvas";
 import { useCanvasLayout, tileRects } from "../../hooks/useCanvasLayout";
 import type { CanvasPaneKind, Pane } from "../../types/pane";
@@ -155,6 +155,13 @@ export function TerminalGrid({
             title="New note (Cmd+Shift+N)"
           >
             <StickyNote size={14} />
+          </button>
+          <button
+            onClick={() => onNewPane("mdviewer")}
+            className="p-1.5 rounded-md text-foreground-muted hover:text-foreground hover:bg-white/5"
+            title="New plan viewer (markdown file)"
+          >
+            <FileText size={14} />
           </button>
           <button
             onClick={onNewTerminal}

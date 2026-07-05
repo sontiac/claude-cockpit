@@ -2,6 +2,7 @@ import { useMemo, useRef } from "react";
 import type React from "react";
 import { TerminalCell } from "./TerminalCell";
 import { NoteCell } from "./NoteCell";
+import { MarkdownViewerCell } from "./MarkdownViewerCell";
 import { MIN_W, MIN_H, type Rect } from "../../hooks/useCanvasLayout";
 import type { Pane } from "../../types/pane";
 import type { TerminalStatus, Workspace } from "../../types/terminal";
@@ -58,9 +59,9 @@ export function TerminalCanvas({
   onSessionRename,
   onStatusChange,
   onExit,
-  // Threaded through for Tasks 10/12 (mdviewer/pomodoro cells), which don't
-  // exist yet — nothing in this file consumes them until those land.
-  onSetPanePath: _onSetPanePath,
+  onSetPanePath,
+  // Threaded through for Task 12 (pomodoro cell), which doesn't exist yet —
+  // nothing in this file consumes it until that lands.
   onSetPomodoroDurations: _onSetPomodoroDurations,
   workspaces,
   onMovePane,
@@ -183,7 +184,19 @@ export function TerminalCanvas({
                   workspaces={workspaces}
                   onMove={(wsId) => onMovePane(pane.id, wsId)}
                 />
-              ) : null /* mdviewer (Task 10) and pomodoro (Task 12) cells land with their features; nothing can create these kinds until their toolbar buttons exist */}
+              ) : pane.kind === "mdviewer" ? (
+                <MarkdownViewerCell
+                  pane={pane}
+                  isActive={isActive}
+                  onSelect={() => onSelect(pane.id)}
+                  onClose={() => onClosePane(pane.id)}
+                  onRename={(label) => onRenamePane(pane.id, label)}
+                  onSetPath={(path) => onSetPanePath(pane.id, path)}
+                  onHeaderPointerDown={headerPointerDown}
+                  workspaces={workspaces}
+                  onMove={(wsId) => onMovePane(pane.id, wsId)}
+                />
+              ) : null /* pomodoro cell lands in Task 12 */}
               {/* Resize handle (bottom-right corner). */}
               <div
                 onPointerDown={(e) => {
