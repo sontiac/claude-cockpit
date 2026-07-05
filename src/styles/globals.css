@@ -161,9 +161,100 @@ button:active {
 }
 
 /* Note editor (TipTap) */
+.note-prose p { margin: 0.15rem 0; }
+.note-prose ul:not([data-type="taskList"]) { list-style: disc; padding-left: 1.25rem; }
+.note-prose ol { list-style: decimal; padding-left: 1.25rem; }
+
+.note-prose h1 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin: 0.6rem 0 0.25rem;
+  color: var(--note-accent, inherit);
+}
+.note-prose h2 { font-size: 1.15rem; font-weight: 650; margin: 0.5rem 0 0.2rem; }
+.note-prose h3 { font-size: 1rem; font-weight: 600; margin: 0.4rem 0 0.15rem; }
+
+.note-prose blockquote {
+  border-left: 2px solid var(--note-accent, rgba(148, 163, 184, 0.5));
+  padding-left: 0.75rem;
+  margin: 0.4rem 0;
+  color: var(--foreground-muted);
+}
+.note-prose hr {
+  border: none;
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+  margin: 0.75rem 0;
+}
+.note-prose mark {
+  background: rgba(250, 204, 21, 0.35);
+  color: inherit;
+  border-radius: 0.15rem;
+  padding: 0 0.1rem;
+}
+.note-prose code {
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 0.85em;
+  background: rgba(148, 163, 184, 0.15);
+  border-radius: 0.25rem;
+  padding: 0.05rem 0.3rem;
+}
+
+/* Empty-note placeholder (TipTap Placeholder extension) */
+.note-prose p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: rgba(148, 163, 184, 0.4);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Checklists: custom green checkboxes with a pop on check, and a smooth
+   green-tinted strikethrough for completed items. */
 .note-prose ul[data-type="taskList"] { list-style: none; padding-left: 0; }
 .note-prose ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 0.5rem; }
-.note-prose ul[data-type="taskList"] li > label { margin-top: 0.15rem; }
-.note-prose ul[data-type="taskList"] li[data-checked="true"] > div { text-decoration: line-through; opacity: 0.6; }
-.note-prose ul:not([data-type="taskList"]) { list-style: disc; padding-left: 1.25rem; }
-.note-prose p { margin: 0.15rem 0; }
+.note-prose ul[data-type="taskList"] li > label { margin-top: 0.2rem; }
+.note-prose ul[data-type="taskList"] li > label input[type="checkbox"] {
+  appearance: none;
+  width: 1rem;
+  height: 1rem;
+  border: 1.5px solid rgba(148, 163, 184, 0.5);
+  border-radius: 0.3rem;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  display: block;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.note-prose ul[data-type="taskList"] li > label input[type="checkbox"]:hover {
+  border-color: rgba(16, 185, 129, 0.7);
+}
+.note-prose ul[data-type="taskList"] li > label input[type="checkbox"]:checked {
+  background: #10b981;
+  border-color: #10b981;
+  animation: check-pop 200ms ease;
+}
+.note-prose ul[data-type="taskList"] li > label input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 5px;
+  height: 9px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+@keyframes check-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+.note-prose ul[data-type="taskList"] li > div {
+  flex: 1;
+  transition: color 200ms ease;
+}
+.note-prose ul[data-type="taskList"] li[data-checked="true"] > div {
+  text-decoration: line-through;
+  text-decoration-color: rgba(16, 185, 129, 0.6);
+  color: rgba(134, 239, 172, 0.55);
+}

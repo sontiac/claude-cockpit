@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import type React from "react";
+import type { CSSProperties } from "react";
 import { X, Pencil, Check, StickyNote } from "lucide-react";
 import { NoteEditor } from "./NoteEditor";
 import { MoveToWorkspaceMenu } from "./MoveToWorkspaceMenu";
@@ -44,6 +45,7 @@ export function NoteCell({
         isActive ? "ring-1 ring-accent-cyan/40" : ""
       }`}
       onClick={onSelect}
+      style={{ "--note-accent": note.color } as CSSProperties}
     >
       {/* Cell header */}
       <div
