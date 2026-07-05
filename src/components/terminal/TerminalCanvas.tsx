@@ -3,6 +3,7 @@ import type React from "react";
 import { TerminalCell } from "./TerminalCell";
 import { NoteCell } from "./NoteCell";
 import { MarkdownViewerCell } from "./MarkdownViewerCell";
+import { PomodoroCell } from "./PomodoroCell";
 import { MIN_W, MIN_H, type Rect } from "../../hooks/useCanvasLayout";
 import type { Pane } from "../../types/pane";
 import type { TerminalStatus, Workspace } from "../../types/terminal";
@@ -60,9 +61,7 @@ export function TerminalCanvas({
   onStatusChange,
   onExit,
   onSetPanePath,
-  // Threaded through for Task 12 (pomodoro cell), which doesn't exist yet —
-  // nothing in this file consumes it until that lands.
-  onSetPomodoroDurations: _onSetPomodoroDurations,
+  onSetPomodoroDurations,
   workspaces,
   onMovePane,
 }: TerminalCanvasProps) {
@@ -196,7 +195,19 @@ export function TerminalCanvas({
                   workspaces={workspaces}
                   onMove={(wsId) => onMovePane(pane.id, wsId)}
                 />
-              ) : null /* pomodoro cell lands in Task 12 */}
+              ) : (
+                <PomodoroCell
+                  pane={pane}
+                  isActive={isActive}
+                  onSelect={() => onSelect(pane.id)}
+                  onClose={() => onClosePane(pane.id)}
+                  onRename={(label) => onRenamePane(pane.id, label)}
+                  onSetDurations={(w, b) => onSetPomodoroDurations(pane.id, w, b)}
+                  onHeaderPointerDown={headerPointerDown}
+                  workspaces={workspaces}
+                  onMove={(wsId) => onMovePane(pane.id, wsId)}
+                />
+              )}
               {/* Resize handle (bottom-right corner). */}
               <div
                 onPointerDown={(e) => {

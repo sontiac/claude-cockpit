@@ -1,7 +1,7 @@
 # Note Glow-Up + Markdown Viewer & Pomodoro Panes — Design
 
 **Date:** 2026-07-05
-**Status:** Approved (design), pending implementation plan
+**Status:** Implemented (plan: docs/superpowers/plans/2026-07-05-note-glowup-and-new-panes.md)
 
 ## Summary
 
