@@ -316,11 +316,14 @@ export function App() {
     if (confirmMsg && !window.confirm(confirmMsg)) return;
 
     // Order matters: kill/forget this window's terminals and panes (both disarm
-    // their persistence) before destroying the window, so nothing re-saves.
+    // their persistence) before closing the window, so nothing re-saves.
     await forgetWindowTerminals();
     await forgetWindowPanes();
+    // Use close() (not destroy()): destroy requires core:window:allow-destroy,
+    // which is NOT in our capabilities, so it would silently reject and leave the
+    // window open. close() is covered by core:window:allow-close.
     await getCurrentWindow()
-      .destroy()
+      .close()
       .catch((e) => console.error("Failed to close window:", e));
   }, [terminals.length, panes.length, forgetWindowTerminals, forgetWindowPanes]);
 
