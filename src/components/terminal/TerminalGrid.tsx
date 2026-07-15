@@ -47,8 +47,11 @@ export function TerminalGrid({
   onMovePane,
 }: TerminalGridProps) {
   const ids = useMemo(() => panes.map((p) => p.id), [panes]);
-  const { layout, setRect, setAll } = useCanvasLayout(ids);
   const surfaceRef = useRef<HTMLDivElement>(null);
+  const { layout, setRect, setAll } = useCanvasLayout(ids, () => {
+    const s = surfaceRef.current;
+    return s ? { w: s.clientWidth, h: s.clientHeight } : null;
+  });
 
   // Tile every window into `cols` columns (0 = auto) filling the visible canvas
   // area. Windows remain freely draggable/resizable after arranging.

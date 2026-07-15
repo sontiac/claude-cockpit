@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 export interface Rect {
   x: number;
@@ -91,15 +91,39 @@ export function tileRects(
  * yet (cross-restart layout persistence would need geometry threaded through the
  * workspace snapshot, which is a separate change).
  */
-export function useCanvasLayout(ids: string[]) {
+export function useCanvasLayout(
+  ids: string[],
+  getSurfaceSize?: () => { w: number; h: number } | null
+) {
   const [layout, setLayout] = useState<Record<string, Rect>>({});
+
+  // Read through a ref so the seeding effect depends only on `ids` — the
+  // getter is a fresh closure every render.
+  const getSurfaceSizeRef = useRef(getSurfaceSize);
+  getSurfaceSizeRef.current = getSurfaceSize;
 
   useEffect(() => {
     setLayout((prev) => {
       const next: Record<string, Rect> = {};
       let seedCount = Object.keys(prev).length;
+      // A single pane arriving on an empty canvas fills the visible surface —
+      // same geometry as the "1" arrange preset — instead of the small
+      // staggered seed. Multiple panes arriving at once (session restore) and
+      // every later pane keep the staggered seeding.
+      const fillFirst = seedCount === 0 && ids.length === 1;
       for (const id of ids) {
-        next[id] = prev[id] ?? seedRect(seedCount++);
+        if (prev[id]) {
+          next[id] = prev[id];
+          continue;
+        }
+        if (fillFirst) {
+          const size = getSurfaceSizeRef.current?.() ?? null;
+          if (size && size.w > 0 && size.h > 0) {
+            next[id] = tileRects([id], 1, size.w, size.h)[id];
+            continue;
+          }
+        }
+        next[id] = seedRect(seedCount++);
       }
       // Only replace state if membership actually changed, so unrelated
       // re-renders don't churn object identity.

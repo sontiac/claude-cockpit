@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { tileRects, MIN_W, MIN_H } from "./useCanvasLayout";
+import { renderHook } from "@testing-library/react";
+import { tileRects, MIN_W, MIN_H, useCanvasLayout } from "./useCanvasLayout";
 
 describe("tileRects columns preset (cols = n)", () => {
   it("lays every pane into a single full-height row", () => {
@@ -64,5 +65,53 @@ describe("tileRects when the viewport is too small to fit every pane", () => {
     for (let i = 1; i < rows.length; i++) {
       expect(rows[i].y).toBeGreaterThanOrEqual(rows[i - 1].y + rows[i - 1].h);
     }
+  });
+});
+
+describe("first-pane fill seeding", () => {
+  it("seeds the first pane of an empty canvas to fill the surface", () => {
+    const { result, rerender } = renderHook(
+      ({ ids }: { ids: string[] }) =>
+        useCanvasLayout(ids, () => ({ w: 1000, h: 600 })),
+      { initialProps: { ids: [] as string[] } }
+    );
+    rerender({ ids: ["a"] });
+    // tileRects([a], 1, 1000, 600): full surface minus margins.
+    expect(result.current.layout["a"]).toEqual(
+      tileRects(["a"], 1, 1000, 600)["a"]
+    );
+  });
+
+  it("seeds later panes with the staggered default, not the fill", () => {
+    const { result, rerender } = renderHook(
+      ({ ids }: { ids: string[] }) =>
+        useCanvasLayout(ids, () => ({ w: 1000, h: 600 })),
+      { initialProps: { ids: [] as string[] } }
+    );
+    rerender({ ids: ["a"] });
+    rerender({ ids: ["a", "b"] });
+    const b = result.current.layout["b"];
+    expect(b.w).toBe(520); // DEFAULT_W stagger, not a fill
+    expect(b.h).toBe(340);
+  });
+
+  it("falls back to the staggered seed when the surface size is unknown", () => {
+    const { result, rerender } = renderHook(
+      ({ ids }: { ids: string[] }) => useCanvasLayout(ids, () => null),
+      { initialProps: { ids: [] as string[] } }
+    );
+    rerender({ ids: ["a"] });
+    expect(result.current.layout["a"].w).toBe(520);
+  });
+
+  it("does not fill when several panes appear at once (session restore)", () => {
+    const { result, rerender } = renderHook(
+      ({ ids }: { ids: string[] }) =>
+        useCanvasLayout(ids, () => ({ w: 1000, h: 600 })),
+      { initialProps: { ids: [] as string[] } }
+    );
+    rerender({ ids: ["a", "b"] });
+    expect(result.current.layout["a"].w).toBe(520);
+    expect(result.current.layout["b"].w).toBe(520);
   });
 });
