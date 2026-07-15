@@ -18,6 +18,7 @@ import { setSessionTitle, openWindow, cycleWindow, quitApp } from "./lib/ipc";
 import { sessionIdFromCommand } from "./lib/restore";
 import { closeConfirmMessage } from "./lib/windowClose";
 import { DEFAULT_COMMAND } from "./lib/constants";
+import { paneCountLabel } from "./lib/paneCounts";
 import { useTheme } from "./hooks/useTheme";
 import type { Project } from "./types/project";
 import type { TerminalStatus } from "./types/terminal";
@@ -202,12 +203,15 @@ export function App() {
   }, [terminals]);
 
   const workspacePaneCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const p of panes) {
-      counts[p.workspaceId] = (counts[p.workspaceId] ?? 0) + 1;
+    const result: Record<string, { count: number; label: string }> = {};
+    for (const ws of workspaces) {
+      const wsPanes = panes.filter((p) => p.workspaceId === ws.id);
+      if (wsPanes.length > 0) {
+        result[ws.id] = { count: wsPanes.length, label: paneCountLabel(wsPanes) };
+      }
     }
-    return counts;
-  }, [panes]);
+    return result;
+  }, [panes, workspaces]);
 
   const handleLaunchProject = useCallback(
     async (project: Project) => {

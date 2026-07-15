@@ -2,6 +2,7 @@ import { useMemo, useRef, useCallback } from "react";
 import { Plus, LayoutGrid, StickyNote, Columns3, FileText, Timer } from "lucide-react";
 import { TerminalCanvas } from "./TerminalCanvas";
 import { useCanvasLayout, tileRects } from "../../hooks/useCanvasLayout";
+import { paneCountLabel } from "../../lib/paneCounts";
 import type { CanvasPaneKind, Pane } from "../../types/pane";
 import type { TerminalStatus, Workspace } from "../../types/terminal";
 
@@ -97,20 +98,7 @@ export function TerminalGrid({
   const colButtonClass =
     "w-7 h-7 rounded-md text-xs font-semibold text-foreground-muted hover:text-foreground hover:bg-white/5 transition-colors";
 
-  const termCount = panes.filter((p) => p.kind === "terminal").length;
-  const noteCount = panes.filter((p) => p.kind === "note").length;
-  const viewerCount = panes.filter((p) => p.kind === "mdviewer").length;
-  const timerCount = panes.filter((p) => p.kind === "pomodoro").length;
-
-  const countLabel =
-    [
-      termCount > 0 ? `${termCount} terminal${termCount !== 1 ? "s" : ""}` : "",
-      noteCount > 0 ? `${noteCount} note${noteCount !== 1 ? "s" : ""}` : "",
-      viewerCount > 0 ? `${viewerCount} plan${viewerCount !== 1 ? "s" : ""}` : "",
-      timerCount > 0 ? `${timerCount} timer${timerCount !== 1 ? "s" : ""}` : "",
-    ]
-      .filter(Boolean)
-      .join(" · ") || "Empty";
+  const countLabel = paneCountLabel(panes);
 
   return (
     <div className="flex-1 flex flex-col min-h-0">

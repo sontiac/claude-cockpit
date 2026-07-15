@@ -6,7 +6,7 @@ interface WorkspaceBarProps {
   workspaces: Workspace[];
   activeId: string;
   counts: Record<string, number>;
-  paneCounts: Record<string, number>;
+  paneCounts: Record<string, { count: number; label: string }>;
   onSwitch: (id: string) => void;
   onCreate: () => void;
   onRename: (id: string, name: string) => void;
@@ -86,13 +86,13 @@ export function WorkspaceBar({
                 {count}
               </span>
             )}
-            {(paneCounts[ws.id] ?? 0) > 0 && (
+            {paneCounts[ws.id] && (
               <span
                 className="ml-1 inline-flex items-center gap-0.5 text-[10px] text-foreground-muted"
-                title={`${paneCounts[ws.id]} pane${paneCounts[ws.id] !== 1 ? "s" : ""}`}
+                title={paneCounts[ws.id].label}
               >
                 <StickyNote size={9} />
-                {paneCounts[ws.id]}
+                {paneCounts[ws.id].count}
               </span>
             )}
             {workspaces.length > 1 && (
