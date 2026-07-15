@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type React from "react";
 import { Timer, Play, Pause as PauseIcon, RotateCcw } from "lucide-react";
 import { PaneHeader } from "./PaneHeader";
 import { useSounds } from "../../hooks/useSounds";
 import { useNotifications } from "../../hooks/useNotifications";
+import { useElementSize } from "../../hooks/useElementSize";
 import {
   idleState,
   start,
@@ -104,6 +105,11 @@ export function PomodoroCell({
     setState((s) => ({ ...idleState(workMinutes), cycles: s.cycles }));
   };
 
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const { width, height } = useElementSize(bodyRef);
+  // 0x0 means "not measured yet" — render the full layout, never flash compact.
+  const compact = width > 0 && (width < 240 || height < 200);
+
   return (
     <div
       className={`flex flex-col h-full min-h-0 bg-background ${
@@ -125,127 +131,194 @@ export function PomodoroCell({
         onHeaderPointerDown={onHeaderPointerDown}
       />
 
-      <div className="flex-1 min-h-0 overflow-auto flex flex-col items-center justify-center gap-3 py-4">
-        {/* Ring countdown */}
-        <div className="relative w-36 h-36">
-          <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
-            <circle
-              cx="60"
-              cy="60"
-              r={RING_R}
-              fill="none"
-              stroke="rgba(148, 163, 184, 0.15)"
-              strokeWidth="6"
-            />
-            <circle
-              cx="60"
-              cy="60"
-              r={RING_R}
-              fill="none"
-              stroke={ringColor}
-              strokeWidth="6"
-              strokeLinecap="round"
-              strokeDasharray={RING_CIRC}
-              strokeDashoffset={RING_CIRC * (1 - frac)}
-              style={{ transition: "stroke-dashoffset 250ms linear" }}
-            />
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-2xl font-semibold tabular-nums text-foreground">
-              {fmt(left)}
-            </span>
-            <span
-              className="text-[10px] uppercase tracking-widest"
-              style={{ color: ringColor }}
-            >
-              {state.phase === "focus" ? "Focus" : "Break"}
-            </span>
+      <div ref={bodyRef} className="flex-1 min-h-0 overflow-hidden">
+        {compact ? (
+          <div className="h-full flex flex-col justify-center gap-2 px-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xl font-semibold tabular-nums text-foreground">
+                {fmt(left)}
+              </span>
+              <span
+                className="text-[10px] uppercase tracking-widest truncate"
+                style={{ color: ringColor }}
+              >
+                {state.phase === "focus" ? "Focus" : "Break"}
+              </span>
+              <div className="flex-1" />
+              {running ? (
+                <button
+                  title="Pause"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setState((s) => pause(s, Date.now()));
+                  }}
+                  className="p-1.5 rounded-lg bg-white/5 text-foreground hover:bg-white/10"
+                >
+                  <PauseIcon size={12} />
+                </button>
+              ) : (
+                <button
+                  title="Start"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setState((s) => start(s, Date.now()));
+                  }}
+                  className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
+                >
+                  <Play size={12} />
+                </button>
+              )}
+              <button
+                title="Reset"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setState((s) => reset(s, pane.workMinutes));
+                }}
+                className="p-1.5 rounded-lg text-foreground-muted hover:text-foreground hover:bg-white/5"
+              >
+                <RotateCcw size={12} />
+              </button>
+            </div>
+            <div className="pomodoro-bar h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: `${frac * 100}%`,
+                  background: ringColor,
+                  transition: "width 250ms linear",
+                }}
+              />
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="h-full overflow-auto flex flex-col items-center justify-center gap-3 py-4">
+            {/* Ring countdown */}
+            <div className="pomodoro-ring relative w-36 h-36">
+              <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
+                <circle
+                  cx="60"
+                  cy="60"
+                  r={RING_R}
+                  fill="none"
+                  stroke="rgba(148, 163, 184, 0.15)"
+                  strokeWidth="6"
+                />
+                <circle
+                  cx="60"
+                  cy="60"
+                  r={RING_R}
+                  fill="none"
+                  stroke={ringColor}
+                  strokeWidth="6"
+                  strokeLinecap="round"
+                  strokeDasharray={RING_CIRC}
+                  strokeDashoffset={RING_CIRC * (1 - frac)}
+                  style={{ transition: "stroke-dashoffset 250ms linear" }}
+                />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-2xl font-semibold tabular-nums text-foreground">
+                  {fmt(left)}
+                </span>
+                <span
+                  className="text-[10px] uppercase tracking-widest"
+                  style={{ color: ringColor }}
+                >
+                  {state.phase === "focus" ? "Focus" : "Break"}
+                </span>
+              </div>
+            </div>
 
-        {/* Cycle tally */}
-        <div className="flex items-center gap-1.5" title={`${state.cycles} focus sessions done`}>
-          {Array.from({ length: 4 }, (_, i) => (
+            {/* Cycle tally */}
             <div
-              key={i}
-              className="w-1.5 h-1.5 rounded-full"
-              style={{
-                background: i < filledDots ? FOCUS_COLOR : "rgba(148, 163, 184, 0.25)",
-              }}
-            />
-          ))}
-        </div>
-
-        {/* Controls */}
-        <div className="flex items-center gap-2">
-          {running ? (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setState((s) => pause(s, Date.now()));
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 text-foreground hover:bg-white/10 text-xs font-medium"
+              className="flex items-center gap-1.5"
+              title={`${state.cycles} focus sessions done`}
             >
-              <PauseIcon size={12} />
-              Pause
-            </button>
-          ) : (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setState((s) => start(s, Date.now()));
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 text-xs font-medium"
-            >
-              <Play size={12} />
-              Start
-            </button>
-          )}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setState((s) => reset(s, pane.workMinutes));
-            }}
-            className="p-1.5 rounded-lg text-foreground-muted hover:text-foreground hover:bg-white/5"
-            title="Reset"
-          >
-            <RotateCcw size={12} />
-          </button>
-        </div>
+              {Array.from({ length: 4 }, (_, i) => (
+                <div
+                  key={i}
+                  className="w-1.5 h-1.5 rounded-full"
+                  style={{
+                    background: i < filledDots ? FOCUS_COLOR : "rgba(148, 163, 184, 0.25)",
+                  }}
+                />
+              ))}
+            </div>
 
-        {/* Durations (editable while paused) */}
-        {!running && (
-          <div className="flex items-center gap-3 text-xs text-foreground-muted">
-            <label className="flex items-center gap-1.5">
-              Focus
-              <input
-                type="number"
-                min={1}
-                max={180}
-                value={pane.workMinutes}
-                onChange={(e) =>
-                  changeDurations(clampMinutes(Number(e.target.value)), pane.breakMinutes)
-                }
-                onClick={(e) => e.stopPropagation()}
-                className="w-14 bg-white/5 border border-card-border rounded px-1.5 py-0.5 text-xs text-foreground outline-none focus:border-accent-cyan tabular-nums"
-              />
-              min
-            </label>
-            <label className="flex items-center gap-1.5">
-              Break
-              <input
-                type="number"
-                min={1}
-                max={180}
-                value={pane.breakMinutes}
-                onChange={(e) =>
-                  changeDurations(pane.workMinutes, clampMinutes(Number(e.target.value)))
-                }
-                onClick={(e) => e.stopPropagation()}
-                className="w-14 bg-white/5 border border-card-border rounded px-1.5 py-0.5 text-xs text-foreground outline-none focus:border-accent-cyan tabular-nums"
-              />
-              min
-            </label>
+            {/* Controls */}
+            <div className="flex items-center gap-2">
+              {running ? (
+                <button
+                  title="Pause"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setState((s) => pause(s, Date.now()));
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 text-foreground hover:bg-white/10 text-xs font-medium"
+                >
+                  <PauseIcon size={12} />
+                  Pause
+                </button>
+              ) : (
+                <button
+                  title="Start"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setState((s) => start(s, Date.now()));
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 text-xs font-medium"
+                >
+                  <Play size={12} />
+                  Start
+                </button>
+              )}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setState((s) => reset(s, pane.workMinutes));
+                }}
+                className="p-1.5 rounded-lg text-foreground-muted hover:text-foreground hover:bg-white/5"
+                title="Reset"
+              >
+                <RotateCcw size={12} />
+              </button>
+            </div>
+
+            {/* Durations (editable while paused) */}
+            {!running && (
+              <div className="flex items-center gap-3 text-xs text-foreground-muted">
+                <label className="flex items-center gap-1.5">
+                  Focus
+                  <input
+                    type="number"
+                    min={1}
+                    max={180}
+                    value={pane.workMinutes}
+                    onChange={(e) =>
+                      changeDurations(clampMinutes(Number(e.target.value)), pane.breakMinutes)
+                    }
+                    onClick={(e) => e.stopPropagation()}
+                    className="w-14 bg-white/5 border border-card-border rounded px-1.5 py-0.5 text-xs text-foreground outline-none focus:border-accent-cyan tabular-nums"
+                  />
+                  min
+                </label>
+                <label className="flex items-center gap-1.5">
+                  Break
+                  <input
+                    type="number"
+                    min={1}
+                    max={180}
+                    value={pane.breakMinutes}
+                    onChange={(e) =>
+                      changeDurations(pane.workMinutes, clampMinutes(Number(e.target.value)))
+                    }
+                    onClick={(e) => e.stopPropagation()}
+                    className="w-14 bg-white/5 border border-card-border rounded px-1.5 py-0.5 text-xs text-foreground outline-none focus:border-accent-cyan tabular-nums"
+                  />
+                  min
+                </label>
+              </div>
+            )}
           </div>
         )}
       </div>
