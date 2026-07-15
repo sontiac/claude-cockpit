@@ -15,3 +15,8 @@ linked spec/commit when picked up.
   toolbar buttons; useMarkdownFile path-change-reset test; pomodoro
   pause-after-expiry / start-at-zero tests; rename Sidebar `onNewNote` prop.
   Flagged 2026-07-05.
+- B4 — Batched follow-ups from cockpit-improvements-batch final review: make
+  session_titles.json / session_stars.json writes atomic (tmp+rename, both
+  stores together); extract shared pomodoro Start/Pause/Reset controls
+  (compact/full duplication); useElementSize multi-entry latest-wins test;
+  scope CharacterCard "Sessions" stat test query. Flagged 2026-07-15.
