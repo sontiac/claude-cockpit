@@ -18,4 +18,6 @@ export interface SessionContext {
   /** Tokens resident in the context window (prompt + last output). */
   tokens: number;
   model: string | null;
+  /** Reasoning-effort level ("low"…"max"), if known. */
+  effort: string | null;
 }

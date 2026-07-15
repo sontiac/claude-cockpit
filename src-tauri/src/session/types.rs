@@ -9,6 +9,9 @@ use serde::Serialize;
 pub struct SessionContext {
     pub tokens: u64,
     pub model: Option<String>,
+    /// Reasoning-effort level ("low"…"max"): the last `/effort` change recorded
+    /// in the transcript tail, else the default from ~/.claude/settings.json.
+    pub effort: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

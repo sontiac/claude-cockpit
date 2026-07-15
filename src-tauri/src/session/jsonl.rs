@@ -488,6 +488,51 @@ fn context_tokens_from_usage(usage: &serde_json::Value) -> Option<u64> {
     }
 }
 
+/// Extract an effort level from a recorded `/effort` command's stdout. Claude
+/// logs command output as user-type lines whose content contains
+/// "Set effort level to <level>". Same scraping precedent as the
+/// "Session renamed to:" detection in the frontend: display-only, tolerant of
+/// surrounding text, and self-correcting on the next change.
+fn effort_from_line(data: &serde_json::Value) -> Option<String> {
+    if data.get("type").and_then(|t| t.as_str()) != Some("user") {
+        return None;
+    }
+    let content = data.get("message")?.get("content")?;
+    let text: String = if let Some(s) = content.as_str() {
+        s.to_string()
+    } else if let Some(arr) = content.as_array() {
+        arr.iter()
+            .filter_map(|item| item.get("text").and_then(|t| t.as_str()))
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        return None;
+    };
+    let marker = "Set effort level to ";
+    let idx = text.find(marker)?;
+    let level: String = text[idx + marker.len()..]
+        .chars()
+        .take_while(|c| c.is_ascii_alphabetic())
+        .collect();
+    if level.is_empty() {
+        None
+    } else {
+        Some(level)
+    }
+}
+
+/// The user's default effort level from ~/.claude/settings.json
+/// (`"effortLevel"`), used when the transcript tail contains no `/effort`
+/// change.
+fn default_effort_level() -> Option<String> {
+    let path = dirs::home_dir()?.join(".claude").join("settings.json");
+    let data = fs::read_to_string(path).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&data).ok()?;
+    json.get("effortLevel")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
 /// Read how much of the context window a live session is currently using, by
 /// finding the most recent main-thread (non-sidechain) assistant turn in its
 /// transcript and summing that turn's `usage`. Sidechain turns (subagent/Task
@@ -527,7 +572,8 @@ pub fn get_session_context(session_id: &str, cwd: &str) -> Option<SessionContext
         0
     };
 
-    let mut latest: Option<SessionContext> = None;
+    let mut latest: Option<(u64, Option<String>)> = None;
+    let mut effort: Option<String> = None;
     for line in buf[start..].lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
@@ -537,6 +583,10 @@ pub fn get_session_context(session_id: &str, cwd: &str) -> Option<SessionContext
             Ok(v) => v,
             Err(_) => continue,
         };
+        if let Some(level) = effort_from_line(&data) {
+            // Lines are append-ordered; the last change wins.
+            effort = Some(level);
+        }
         if data.get("type").and_then(|t| t.as_str()) != Some("assistant") {
             continue;
         }
@@ -560,10 +610,14 @@ pub fn get_session_context(session_id: &str, cwd: &str) -> Option<SessionContext
             .and_then(|m| m.as_str())
             .map(|s| s.to_string());
         // Lines are append-ordered, so the last qualifying line wins.
-        latest = Some(SessionContext { tokens, model });
+        latest = Some((tokens, model));
     }
 
-    latest
+    latest.map(|(tokens, model)| SessionContext {
+        tokens,
+        model,
+        effort: effort.or_else(default_effort_level),
+    })
 }
 
 /// Best-effort conversion of Claude's project dir name back to a path.
@@ -574,5 +628,46 @@ fn dir_name_to_path(name: &str) -> String {
         name.replacen('-', "/", 1).replace('-', "/")
     } else {
         format!("/{}", name.replace('-', "/"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn line(content: &str) -> serde_json::Value {
+        serde_json::json!({
+            "type": "user",
+            "message": { "role": "user", "content": content }
+        })
+    }
+
+    #[test]
+    fn effort_parsed_from_effort_command_stdout() {
+        let l = line(
+            "<local-command-stdout>Set effort level to high (saved as your default for new sessions): Comprehensive implementation</local-command-stdout>"
+        );
+        assert_eq!(effort_from_line(&l), Some("high".to_string()));
+    }
+
+    #[test]
+    fn effort_parsed_from_array_content() {
+        let l = serde_json::json!({
+            "type": "user",
+            "message": { "role": "user", "content": [
+                { "type": "text", "text": "<local-command-stdout>Set effort level to max</local-command-stdout>" }
+            ]}
+        });
+        assert_eq!(effort_from_line(&l), Some("max".to_string()));
+    }
+
+    #[test]
+    fn effort_ignores_unrelated_lines() {
+        assert_eq!(effort_from_line(&line("just chatting about effort levels")), None);
+        let assistant = serde_json::json!({
+            "type": "assistant",
+            "message": { "content": "Set effort level to low" }
+        });
+        assert_eq!(effort_from_line(&assistant), None);
     }
 }
