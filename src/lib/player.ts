@@ -158,6 +158,23 @@ export function derivePlayer(stats: PlayerStats): Player {
   };
 }
 
+// --- Tiers ------------------------------------------------------------------
+// Character art evolves in level brackets: 1-49, 50-99, 100-149, 150-199, 200+.
+export const TIER_LEVEL_SPAN = 50;
+export const MAX_TIER = 5;
+
+export function tierForLevel(level: number): number {
+  return Math.min(
+    MAX_TIER,
+    Math.max(1, Math.floor(Math.max(1, level) / TIER_LEVEL_SPAN) + 1)
+  );
+}
+
+/** The next milestone level strictly above `level`. */
+export function nextMilestone(level: number): number {
+  return (Math.floor(level / MILESTONE_EVERY) + 1) * MILESTONE_EVERY;
+}
+
 /** Compact number formatting: 283922 → "283.9k", 69178787 → "69.2M". */
 export function formatCompact(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
