@@ -9,8 +9,8 @@ import { useNotifications } from "./useNotifications";
 // bytes, so this stays cheap.
 const POLL_MS = 5000;
 // How long the HUD celebration lingers — milestones longer than ordinary dings.
-const MILESTONE_FLASH_MS = 4500;
-const LEVEL_FLASH_MS = 1800;
+const MILESTONE_FLASH_MS = 5000;
+const LEVEL_FLASH_MS = 3000;
 
 /** A pending level-up celebration: the new level and whether it's a milestone. */
 export interface LevelUp {

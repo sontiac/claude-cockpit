@@ -1,10 +1,12 @@
 import { usePlayer } from "../../hooks/usePlayer";
 import { formatCompact } from "../../lib/player";
+import { LevelUpBurst } from "./LevelUpBurst";
 
 /**
  * Always-visible character HUD for the status bar: level, emergent class, and an
  * XP bar that fills toward the next level. On a level-up it swaps to a flashing
- * celebration for a few seconds (the audio + notification fire from usePlayer).
+ * celebration for a few seconds (the audio + notification fire from usePlayer)
+ * and a center-screen burst card portals in alongside it.
  */
 export function PlayerHud() {
   const { player, levelUp } = usePlayer();
@@ -13,9 +15,12 @@ export function PlayerHud() {
   // Milestone level-up: big golden celebration.
   if (levelUp?.milestone) {
     return (
-      <div className="flex items-center gap-1.5 font-semibold text-accent-amber animate-pulse">
-        <span>⭐ LEVEL {levelUp.level} — MILESTONE!</span>
-      </div>
+      <>
+        <div className="flex items-center gap-1.5 font-semibold text-accent-amber animate-pulse">
+          <span>⭐ LEVEL {levelUp.level} — MILESTONE!</span>
+        </div>
+        <LevelUpBurst player={player} levelUp={levelUp} onClick={() => {}} />
+      </>
     );
   }
 
@@ -24,9 +29,12 @@ export function PlayerHud() {
   // Ordinary level-up: brief cyan pulse on the level badge.
   if (levelUp) {
     return (
-      <div className="flex items-center gap-1.5 font-semibold text-accent-cyan animate-pulse">
-        <span>▲ Level {levelUp.level}!</span>
-      </div>
+      <>
+        <div className="flex items-center gap-1.5 font-semibold text-accent-cyan animate-pulse">
+          <span>▲ Level {levelUp.level}!</span>
+        </div>
+        <LevelUpBurst player={player} levelUp={levelUp} onClick={() => {}} />
+      </>
     );
   }
 
