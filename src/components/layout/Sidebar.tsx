@@ -12,11 +12,12 @@ import {
   Pencil,
   Trash2,
   GripVertical,
+  Star,
 } from "lucide-react";
 import type { Project } from "../../types/project";
 import type { Session } from "../../types/session";
 import { formatRelativeTime } from "../../lib/constants";
-import { getSessions } from "../../lib/ipc";
+import { getSessions, setSessionStarred } from "../../lib/ipc";
 
 interface SidebarProps {
   projects: Project[];
@@ -81,11 +82,18 @@ function ProjectSection({
   const [expanded, setExpanded] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(false);
+  // Bumped on every user mutation (star toggle). A poll whose getSessions
+  // request was already in flight when the user clicked holds a pre-mutation
+  // snapshot; comparing the version captured before the await against the
+  // current one lets us discard that stale snapshot instead of letting it
+  // overwrite the optimistic state. The next poll tick delivers truth.
+  const mutationVersionRef = useRef(0);
 
   const loadSessions = useCallback(async () => {
+    const version = mutationVersionRef.current;
     try {
       const data = await getSessions(20, project.path);
-      setSessions(data);
+      if (mutationVersionRef.current === version) setSessions(data);
     } catch (err) {
       console.error("Failed to load sessions for", project.name, err);
     } finally {
@@ -104,6 +112,27 @@ function ProjectSection({
     const interval = setInterval(loadSessions, SESSION_POLL_MS);
     return () => clearInterval(interval);
   }, [expanded, loadSessions]);
+
+  const toggleStar = useCallback(
+    async (session: Session) => {
+      // Invalidate any in-flight poll so its pre-toggle snapshot can't
+      // overwrite the optimistic flip below.
+      mutationVersionRef.current += 1;
+      // Optimistic flip; the 2.5s poll reconciles ordering and truth.
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.session_id === session.session_id ? { ...s, starred: !s.starred } : s
+        )
+      );
+      try {
+        await setSessionStarred(session.session_id, !session.starred);
+      } catch (err) {
+        console.error("Failed to toggle star:", err);
+        loadSessions();
+      }
+    },
+    [loadSessions]
+  );
 
   return (
     <div
@@ -165,39 +194,54 @@ function ProjectSection({
             </div>
           ) : (
             sessions.map((session) => (
-              <button
-                key={session.session_id}
-                onClick={() => {
-                  const sessionTitle = getDisplayTitle(session);
-                  const label = session.custom_title
-                    ? `${project.name}: ${session.custom_title}`
-                    : `${project.name}: ${sessionTitle.slice(0, 40)}`;
-                  onResume(session.session_id, session.cwd, label);
-                }}
-                className="w-full text-left px-2 py-1.5 rounded-md hover:bg-white/5 group/session"
-              >
-                <div className="text-xs text-foreground truncate leading-relaxed">
-                  {getDisplayTitle(session)}
-                </div>
-                <div className="flex items-center gap-2 mt-0.5 text-[10px] text-foreground-muted">
-                  <span>{formatRelativeTime(session.last_message)}</span>
-                  <span className="flex items-center gap-0.5">
-                    <MessageSquare size={9} />
-                    {session.message_count}
-                  </span>
-                  {session.tool_call_count > 0 && (
+              <div key={session.session_id} className="relative group/session">
+                <button
+                  onClick={() => {
+                    const sessionTitle = getDisplayTitle(session);
+                    const label = session.custom_title
+                      ? `${project.name}: ${session.custom_title}`
+                      : `${project.name}: ${sessionTitle.slice(0, 40)}`;
+                    onResume(session.session_id, session.cwd, label);
+                  }}
+                  className="w-full text-left px-2 py-1.5 pr-7 rounded-md hover:bg-white/5"
+                >
+                  <div className="text-xs text-foreground truncate leading-relaxed">
+                    {getDisplayTitle(session)}
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5 text-[10px] text-foreground-muted">
+                    <span>{formatRelativeTime(session.last_message)}</span>
                     <span className="flex items-center gap-0.5">
-                      <Wrench size={9} />
-                      {session.tool_call_count}
+                      <MessageSquare size={9} />
+                      {session.message_count}
                     </span>
-                  )}
-                  {formatModel(session.model) && (
-                    <span className="px-1 rounded bg-white/5 font-medium">
-                      {formatModel(session.model)}
-                    </span>
-                  )}
-                </div>
-              </button>
+                    {session.tool_call_count > 0 && (
+                      <span className="flex items-center gap-0.5">
+                        <Wrench size={9} />
+                        {session.tool_call_count}
+                      </span>
+                    )}
+                    {formatModel(session.model) && (
+                      <span className="px-1 rounded bg-white/5 font-medium">
+                        {formatModel(session.model)}
+                      </span>
+                    )}
+                  </div>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleStar(session);
+                  }}
+                  title={session.starred ? "Unstar" : "Star — keep pinned in this list"}
+                  className={`absolute right-1 top-1.5 p-0.5 rounded hover:bg-white/10 ${
+                    session.starred
+                      ? "text-accent-amber"
+                      : "text-foreground-muted opacity-0 group-hover/session:opacity-100"
+                  }`}
+                >
+                  <Star size={12} fill={session.starred ? "currentColor" : "none"} />
+                </button>
+              </div>
             ))
           )}
         </div>
