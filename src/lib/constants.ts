@@ -51,6 +51,23 @@ export function formatTokens(tokens: number): string {
   return `${(tokens / 1_000_000).toFixed(1)}M`;
 }
 
+/**
+ * Short human name for a Claude model id: "claude-opus-4-8" → "Opus 4.8",
+ * "claude-fable-5" → "Fable 5", "claude-haiku-4-5-20251001" → "Haiku 4.5"
+ * (trailing date stamps dropped, "[1m]" context suffix tolerated). Unknown
+ * shapes fall back to the raw id.
+ */
+export function formatModelShort(id: string): string {
+  const m = id.replace(/\[1m\]$/, "").match(/^claude-([a-z]+)-([0-9][0-9-]*)$/);
+  if (!m) return id;
+  const family = m[1][0].toUpperCase() + m[1].slice(1);
+  const parts = m[2].split("-").filter(Boolean);
+  if (parts.length > 1 && /^\d{8}$/.test(parts[parts.length - 1])) {
+    parts.pop();
+  }
+  return `${family} ${parts.join(".")}`;
+}
+
 export function formatRelativeTime(timestamp: number): string {
   const now = Date.now();
   const diff = now - timestamp;

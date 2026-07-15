@@ -144,6 +144,29 @@ button:active {
   border-radius: 3px;
 }
 
+/* Terminal cell header readout: "Fable 5 · high · 74k". The cell is a size
+   container (its width is set by the canvas) so narrow panes can shed the
+   readout in priority order: effort first, model second, tokens never. */
+.terminal-cell-container {
+  container-type: inline-size;
+}
+.pill-model::after,
+.pill-effort::after {
+  content: "·";
+  margin-left: 6px;
+  color: rgba(148, 163, 184, 0.5);
+}
+@container (max-width: 420px) {
+  .pill-effort {
+    display: none;
+  }
+}
+@container (max-width: 340px) {
+  .pill-model {
+    display: none;
+  }
+}
+
 /* Status dot animation */
 @keyframes pulse {
   0%, 100% { opacity: 1; }

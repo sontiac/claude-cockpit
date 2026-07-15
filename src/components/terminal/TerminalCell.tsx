@@ -58,7 +58,7 @@ export function TerminalCell({
 
   return (
     <div
-      className={`flex flex-col h-full min-h-0 bg-background ${
+      className={`terminal-cell-container flex flex-col h-full min-h-0 bg-background ${
         isActive ? "ring-1 ring-accent-cyan/40" : ""
       }`}
       onClick={onSelect}
@@ -127,7 +127,11 @@ export function TerminalCell({
         )}
 
         {context && context.tokens > 0 && (
-          <ContextPill tokens={context.tokens} />
+          <ContextPill
+            tokens={context.tokens}
+            model={context.model}
+            effort={context.effort}
+          />
         )}
 
         <MoveToWorkspaceMenu
