@@ -10,6 +10,7 @@ import {
   onTerminalExit,
 } from "../lib/ipc";
 import type { TerminalStatus } from "../types/terminal";
+import { scrollSafeFit } from "../lib/xtermScroll";
 
 interface UseTerminalOptions {
   id: string;
@@ -17,27 +18,6 @@ interface UseTerminalOptions {
   onStatusChange?: (status: TerminalStatus) => void;
   onExit?: (code: number | null) => void;
   onRenameDetected?: (newName: string) => void;
-}
-
-/**
- * Calls fitAddon.fit() while preserving the xterm viewport's scroll position.
- * Temporarily sets overflow to hidden so the browser can't adjust scrollTop
- * during the resize, then immediately restores both overflow and scrollTop.
- */
-function scrollSafeFit(fitAddon: FitAddon, container: HTMLElement) {
-  const viewport = container.querySelector(".xterm-viewport") as HTMLElement | null;
-  if (!viewport) {
-    fitAddon.fit();
-    return;
-  }
-
-  const scrollTop = viewport.scrollTop;
-  // Lock scroll during fit by hiding overflow
-  viewport.style.overflowY = "hidden";
-  fitAddon.fit();
-  // Restore immediately
-  viewport.scrollTop = scrollTop;
-  viewport.style.overflowY = "";
 }
 
 /**
@@ -284,7 +264,7 @@ export function useTerminal({ id, fontSize, onStatusChange, onExit, onRenameDete
         // Skip while the container is collapsed/hidden — fitting at 0px yields
         // 0 cols and corrupts the terminal (the zero-width-terminal bug).
         if (container.clientWidth === 0 || container.clientHeight === 0) return;
-        scrollSafeFit(fitAddon, container);
+        scrollSafeFit(term, fitAddon, container);
         const dims = fitAddon.proposeDimensions();
         if (dims && dims.cols > 0 && dims.rows > 0) {
           ptyResize(id, dims.cols, dims.rows).catch(console.error);
@@ -327,7 +307,7 @@ export function useTerminal({ id, fontSize, onStatusChange, onExit, onRenameDete
     if (!term || !fitAddon || !container) return;
     term.options.fontSize = fontSize;
     if (container.clientWidth === 0 || container.clientHeight === 0) return;
-    scrollSafeFit(fitAddon, container);
+    scrollSafeFit(term, fitAddon, container);
     const dims = fitAddon.proposeDimensions();
     if (dims && dims.cols > 0 && dims.rows > 0) {
       ptyResize(id, dims.cols, dims.rows).catch(console.error);
