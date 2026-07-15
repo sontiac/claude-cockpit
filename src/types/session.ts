@@ -11,6 +11,7 @@ export interface Session {
   git_branch: string | null;
   custom_title: string | null;
   first_user_message: string | null;
+  starred: boolean;
 }
 
 /** Current context-window usage for a live session, read from its transcript. */

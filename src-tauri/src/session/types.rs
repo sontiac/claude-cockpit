@@ -28,4 +28,7 @@ pub struct SessionInfo {
     pub git_branch: Option<String>,
     pub custom_title: Option<String>,
     pub first_user_message: Option<String>,
+    /// Cockpit-side star (session_stars.json overlay); never read from disk
+    /// transcripts.
+    pub starred: bool,
 }

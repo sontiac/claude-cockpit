@@ -85,6 +85,7 @@ pub fn get_sessions_from_db(limit: u32, project_path: Option<&str>) -> Vec<Sessi
             git_branch: None,
             custom_title: None,
             first_user_message: None,
+            starred: false,
         })
     }) {
         Ok(r) => r,

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 
@@ -196,5 +196,42 @@ pub fn set_session_title(
     titles.insert(session_id, title);
     let path = session_titles_file();
     fs::write(&path, serde_json::to_string_pretty(&titles)?)?;
+    Ok(())
+}
+
+// --- Session stars ---------------------------------------------------------
+// Starred sessions pin to the top of the sidebar and are exempt from the
+// recency cap, so an important chat can be found (and its terminal safely
+// closed) long after it stops being recent. Stored as a sorted JSON array of
+// session ids, sibling to session_titles.json.
+
+fn session_stars_file() -> PathBuf {
+    base_dir().join("session_stars.json")
+}
+
+pub fn get_session_stars() -> HashSet<String> {
+    let path = session_stars_file();
+    if !path.exists() {
+        return HashSet::new();
+    }
+    match fs::read_to_string(&path) {
+        Ok(data) => serde_json::from_str(&data).unwrap_or_default(),
+        Err(_) => HashSet::new(),
+    }
+}
+
+pub fn set_session_starred(
+    session_id: String,
+    starred: bool,
+) -> Result<(), crate::error::CockpitError> {
+    let mut stars = get_session_stars();
+    if starred {
+        stars.insert(session_id);
+    } else {
+        stars.remove(&session_id);
+    }
+    let mut sorted: Vec<&String> = stars.iter().collect();
+    sorted.sort();
+    fs::write(session_stars_file(), serde_json::to_string_pretty(&sorted)?)?;
     Ok(())
 }

@@ -146,6 +146,11 @@ export const removeWindowNotes = (label: string) =>
 export const setSessionTitle = (sessionId: string, title: string) =>
   invoke<void>("set_session_title", { sessionId, title });
 
+/** Star/unstar a session: starred sessions pin to the top of the sidebar and
+ *  never age out of the list. */
+export const setSessionStarred = (sessionId: string, starred: boolean) =>
+  invoke<void>("set_session_starred", { sessionId, starred });
+
 // System commands
 export interface BrowseResult {
   current_path: string;

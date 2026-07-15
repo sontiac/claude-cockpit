@@ -56,6 +56,7 @@ pub fn run() {
             commands::workspace::clear_session,
             commands::workspace::remove_window_state,
             commands::workspace::set_session_title,
+            commands::workspace::set_session_starred,
             commands::notes::get_window_notes,
             commands::notes::save_window_notes,
             commands::notes::get_note_content,

@@ -127,6 +127,7 @@ fn read_session_from_jsonl(file_path: &Path) -> Option<SessionInfo> {
         git_branch,
         custom_title,
         first_user_message,
+        starred: false,
     })
 }
 

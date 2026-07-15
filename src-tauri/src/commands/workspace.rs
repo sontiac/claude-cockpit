@@ -33,3 +33,10 @@ pub fn remove_window_state(label: String) -> Result<(), CockpitError> {
 pub fn set_session_title(session_id: String, title: String) -> Result<(), CockpitError> {
     store::set_session_title(session_id, title)
 }
+
+/// Star/unstar a session. Starred sessions pin to the top of the sidebar list
+/// and never age out of it.
+#[tauri::command]
+pub fn set_session_starred(session_id: String, starred: bool) -> Result<(), CockpitError> {
+    store::set_session_starred(session_id, starred)
+}
