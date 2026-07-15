@@ -53,7 +53,7 @@ export function PlayerHud() {
         )}
       </button>
 
-      {levelUp && (
+      {levelUp && !cardOpen && (
         <LevelUpBurst player={player} levelUp={levelUp} onClick={openCard} />
       )}
       <CharacterCard
