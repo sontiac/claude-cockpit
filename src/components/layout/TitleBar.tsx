@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Minus, Square, X, Maximize2 } from "lucide-react";
+import { toggleMaximizeWindow } from "../../lib/ipc";
 
 interface TitleBarProps {
   /** Close this window (App decides: close-just-this-window vs. quit the app). */
@@ -13,8 +14,7 @@ export function TitleBar({ onClose }: TitleBarProps) {
 
   const handleMinimize = () => appWindow.minimize();
   const handleMaximize = async () => {
-    await appWindow.toggleMaximize();
-    setIsMaximized(await appWindow.isMaximized());
+    setIsMaximized(await toggleMaximizeWindow());
   };
   const handleClose = () => onClose();
 

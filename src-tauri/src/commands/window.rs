@@ -84,6 +84,103 @@ pub fn open_window(
     Ok(())
 }
 
+/// Tolerance (physical px) when comparing a window frame to a monitor work
+/// area — scale-factor rounding can leave the applied frame a pixel or two off.
+const MAXIMIZE_TOLERANCE: i32 = 2;
+
+/// Whether `frame` fills `work_area` — i.e. the window is maximized *on that
+/// monitor*. Compares position as well as size: a window maximized on one
+/// monitor and dragged to a same-resolution monitor matches in size only, and
+/// must not read as maximized there.
+fn is_maximized_frame(frame: &Geometry, work_area: &Geometry) -> bool {
+    let close = |a: i32, b: i32| (a - b).abs() <= MAXIMIZE_TOLERANCE;
+    close(frame.x, work_area.x)
+        && close(frame.y, work_area.y)
+        && close(frame.width as i32, work_area.width as i32)
+        && close(frame.height as i32, work_area.height as i32)
+}
+
+/// Fallback restore frame when un-maximizing a window with no saved
+/// pre-maximize frame (e.g. it was session-restored already at work-area
+/// size): the default window size, centered in `work_area`, clamped to fit.
+fn centered_default(work_area: &Geometry) -> Geometry {
+    let width = work_area.width.min(1280);
+    let height = work_area.height.min(800);
+    Geometry {
+        x: work_area.x + ((work_area.width - width) / 2) as i32,
+        y: work_area.y + ((work_area.height - height) / 2) as i32,
+        width,
+        height,
+    }
+}
+
+/// Toggle maximize for the calling window, returning the new maximized state.
+///
+/// Cockpit implements this itself instead of using tao's `set_maximized`
+/// because tao's fallback path for undecorated (borderless) windows is broken
+/// on macOS: it maximizes onto `NSScreen::mainScreen` rather than the window's
+/// own screen, and un-maximize restores the frame saved on whatever monitor
+/// the window was last maximized on — both of which fling the window back to
+/// its original monitor (tao 0.35.3 still has this).
+///
+/// Here maximize fills the *current* monitor's work area, saving the previous
+/// frame per window label; toggling again restores that frame.
+#[tauri::command]
+pub fn toggle_maximize(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+) -> Result<bool, CockpitError> {
+    let err = |e: tauri::Error| CockpitError::Window(e.to_string());
+
+    let pos = window.outer_position().map_err(err)?;
+    let size = window.outer_size().map_err(err)?;
+    let frame = Geometry {
+        x: pos.x,
+        y: pos.y,
+        width: size.width,
+        height: size.height,
+    };
+
+    let monitor = window
+        .current_monitor()
+        .map_err(err)?
+        .ok_or_else(|| CockpitError::Window("window is not on any monitor".into()))?;
+    let area = monitor.work_area();
+    let work_area = Geometry {
+        x: area.position.x,
+        y: area.position.y,
+        width: area.size.width,
+        height: area.size.height,
+    };
+
+    let mut saved_frames = state
+        .maximize_frames
+        .lock()
+        .map_err(|e| CockpitError::Window(e.to_string()))?;
+
+    if is_maximized_frame(&frame, &work_area) {
+        let target = saved_frames
+            .remove(window.label())
+            .unwrap_or_else(|| centered_default(&work_area));
+        window
+            .set_size(PhysicalSize::new(target.width, target.height))
+            .map_err(err)?;
+        window
+            .set_position(PhysicalPosition::new(target.x, target.y))
+            .map_err(err)?;
+        Ok(false)
+    } else {
+        saved_frames.insert(window.label().to_string(), frame);
+        window
+            .set_size(PhysicalSize::new(work_area.width, work_area.height))
+            .map_err(err)?;
+        window
+            .set_position(PhysicalPosition::new(work_area.x, work_area.y))
+            .map_err(err)?;
+        Ok(true)
+    }
+}
+
 /// Quit the whole application cleanly. Kills every terminal child process first
 /// (dropping the PtyHandles fires their killers — Claude ignores the PTY hangup,
 /// so an explicit kill is what actually terminates it), then exits the process.
@@ -131,6 +228,65 @@ mod tests {
 
     fn labels(v: &[&str]) -> Vec<String> {
         v.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn geo(x: i32, y: i32, width: u32, height: u32) -> Geometry {
+        Geometry {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    #[test]
+    fn frame_filling_work_area_is_maximized() {
+        let work = geo(0, 25, 2560, 1415);
+        assert!(is_maximized_frame(&geo(0, 25, 2560, 1415), &work));
+    }
+
+    #[test]
+    fn frame_within_tolerance_is_maximized() {
+        // Scale-factor rounding can leave the frame a pixel or two off the
+        // work area; still counts as maximized.
+        let work = geo(0, 25, 2560, 1415);
+        assert!(is_maximized_frame(&geo(1, 26, 2559, 1414), &work));
+    }
+
+    #[test]
+    fn smaller_frame_is_not_maximized() {
+        let work = geo(0, 25, 2560, 1415);
+        assert!(!is_maximized_frame(&geo(100, 100, 1280, 800), &work));
+    }
+
+    #[test]
+    fn same_size_frame_on_other_monitor_is_not_maximized() {
+        // A window maximized on monitor A then dragged to a same-resolution
+        // monitor B matches B's work area in size but not position — it must
+        // NOT read as maximized there, or toggling would restore the stale
+        // frame back on monitor A (the tao bug this replaces).
+        let work_b = geo(2560, 25, 2560, 1415);
+        assert!(!is_maximized_frame(&geo(0, 25, 2560, 1415), &work_b));
+    }
+
+    #[test]
+    fn centered_default_sits_inside_work_area() {
+        let work = geo(2560, 25, 2560, 1415);
+        let d = centered_default(&work);
+        assert_eq!(d.width, 1280);
+        assert_eq!(d.height, 800);
+        assert_eq!(d.x, 2560 + (2560 - 1280) as i32 / 2);
+        assert_eq!(d.y, 25 + (1415 - 800) as i32 / 2);
+    }
+
+    #[test]
+    fn centered_default_clamps_to_small_work_area() {
+        // Work area smaller than the default window: fill it instead of
+        // overflowing off-screen.
+        let work = geo(0, 25, 1024, 640);
+        let d = centered_default(&work);
+        assert_eq!((d.x, d.y), (0, 25));
+        assert_eq!((d.width, d.height), (1024, 640));
     }
 
     #[test]

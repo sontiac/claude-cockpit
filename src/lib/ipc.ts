@@ -47,6 +47,12 @@ export const openWindow = (label?: string, geometry?: Geometry) =>
     geometry: geometry ?? null,
   });
 
+/** Toggle maximize for the calling window on its *current* monitor (tao's
+ *  own maximize is broken for undecorated windows on macOS — it flings the
+ *  window back to the monitor it was first maximized on). Returns the new
+ *  maximized state. */
+export const toggleMaximizeWindow = () => invoke<boolean>("toggle_maximize");
+
 /** Cleanly quit the whole app (kills child processes, then exits). */
 export const quitApp = () => invoke<void>("quit_app");
 
