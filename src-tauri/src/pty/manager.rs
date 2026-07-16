@@ -31,6 +31,49 @@ fn login_shell_path() -> Option<String> {
     .clone()
 }
 
+/// Normalize a macOS `AppleLocale` identifier (e.g. "en_US", "en-US",
+/// "es_UY@currency=UYU") into a locale-database name like "en_US.UTF-8".
+///
+/// Returns `None` for identifiers that could not name a locale-database
+/// entry; the result is joined onto `/usr/share/locale`, so anything outside
+/// `[A-Za-z0-9_]` is rejected rather than sanitized.
+fn utf8_locale_candidate(apple_locale: &str) -> Option<String> {
+    let base = apple_locale
+        .trim()
+        .split('@')
+        .next()
+        .unwrap_or("")
+        .replace('-', "_");
+    if base.is_empty() || !base.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return None;
+    }
+    Some(format!("{base}.UTF-8"))
+}
+
+/// The `LANG` value a real terminal would hand its children, or `None` if the
+/// user's locale has no UTF-8 entry in the system locale database.
+///
+/// GUI apps launched from Finder/Dock get no locale variables at all, so PTY
+/// children inherit a C locale in which tools treat text as MacRoman instead
+/// of UTF-8 — most visibly `pbcopy` (Claude Code's copy-to-clipboard), which
+/// double-encodes every non-ASCII character ("–" pastes as "‚Äì"). Real
+/// terminals fix this by deriving `LANG` from the user's macOS locale
+/// preference; we do the same. Cached because it spawns `defaults`.
+fn user_utf8_lang() -> Option<String> {
+    static LANG: OnceLock<Option<String>> = OnceLock::new();
+    LANG.get_or_init(|| {
+        let apple_locale = std::process::Command::new("defaults")
+            .args(["read", "-g", "AppleLocale"])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .and_then(|o| String::from_utf8(o.stdout).ok())?;
+        utf8_locale_candidate(&apple_locale)
+            .filter(|c| std::path::Path::new("/usr/share/locale").join(c).is_dir())
+    })
+    .clone()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TerminalStatus {
@@ -135,6 +178,22 @@ impl PtyHandle {
         // cockpit itself was launched.
         if let Some(path) = login_shell_path() {
             cmd.env("PATH", path);
+        }
+
+        // GUI-launched cockpit carries no locale variables, so children would
+        // run in the C locale and treat text as MacRoman (e.g. `pbcopy`
+        // mangles every non-ASCII copy). Hand children a UTF-8 locale the way
+        // real terminals do — unless the environment already provides one.
+        let has_locale = ["LC_ALL", "LC_CTYPE", "LANG"]
+            .iter()
+            .any(|k| std::env::var(k).is_ok_and(|v| !v.is_empty()));
+        if !has_locale {
+            match user_utf8_lang() {
+                Some(lang) => cmd.env("LANG", lang),
+                // Locale absent from the system database: still guarantee
+                // UTF-8 text handling, mirroring Terminal.app's fallback.
+                None => cmd.env("LC_CTYPE", "UTF-8"),
+            }
         }
 
         // Terminal-specific overrides applied on top of the inherited env.
@@ -301,5 +360,56 @@ impl PtyHandle {
                 pixel_height: 0,
             })
             .map_err(|e| crate::error::CockpitError::Pty(e.to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::utf8_locale_candidate;
+
+    #[test]
+    fn plain_apple_locale_maps_to_utf8_locale() {
+        assert_eq!(
+            utf8_locale_candidate("en_US"),
+            Some("en_US.UTF-8".to_string())
+        );
+    }
+
+    #[test]
+    fn hyphenated_identifier_is_normalized_to_underscore() {
+        assert_eq!(
+            utf8_locale_candidate("en-US"),
+            Some("en_US.UTF-8".to_string())
+        );
+    }
+
+    #[test]
+    fn keyword_modifiers_are_stripped() {
+        assert_eq!(
+            utf8_locale_candidate("es_UY@currency=UYU"),
+            Some("es_UY.UTF-8".to_string())
+        );
+    }
+
+    #[test]
+    fn surrounding_whitespace_is_trimmed() {
+        assert_eq!(
+            utf8_locale_candidate("en_US\n"),
+            Some("en_US.UTF-8".to_string())
+        );
+    }
+
+    #[test]
+    fn empty_identifier_yields_none() {
+        assert_eq!(utf8_locale_candidate(""), None);
+        assert_eq!(utf8_locale_candidate("  \n"), None);
+    }
+
+    #[test]
+    fn identifiers_with_unexpected_characters_yield_none() {
+        // The candidate is joined onto /usr/share/locale, so anything that
+        // could escape that directory must be rejected outright.
+        assert_eq!(utf8_locale_candidate("../../etc/passwd"), None);
+        assert_eq!(utf8_locale_candidate("en US"), None);
     }
 }
