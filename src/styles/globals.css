@@ -144,6 +144,25 @@ button:active {
   border-radius: 3px;
 }
 
+/* macOS dictation feeds the terminal through the IME composition path, and
+   xterm.css renders pending composition text as a single absolutely-positioned
+   `white-space: nowrap` line — a long utterance grows past the right edge
+   forever. Let the overlay wrap at the terminal's edge instead. Its positioned
+   ancestor (.xterm-helpers) ships with no width, so stretch it across the
+   screen first — all its other children are absolutely positioned off-screen,
+   so this is visually inert. `height: auto` needs !important because xterm
+   sets a one-cell inline height, which would leave wrapped lines painted
+   outside the overlay's background. */
+.terminal-container .xterm-helpers {
+  left: 0;
+  right: 0;
+}
+.terminal-container .composition-view {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  height: auto !important;
+}
+
 /* Terminal cell header readout: "Fable 5 · high · 74k". The cell is a size
    container (its width is set by the canvas) so narrow panes can shed the
    readout in priority order: effort first, model second, tokens never. */
