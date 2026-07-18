@@ -9,6 +9,7 @@ import {
   listSessionLabels,
   clearSession,
   openWindow,
+  listProviders,
 } from "../lib/ipc";
 import { generateId } from "../lib/utils";
 import { DEFAULT_COMMAND, PROJECT_COLORS } from "../lib/constants";
@@ -33,6 +34,7 @@ function toPersisted(t: TerminalInfo): PersistedTerminal {
     command: t.command,
     project_id: t.project_id,
     workspace_id: t.workspaceId,
+    provider: t.provider,
   };
 }
 
@@ -99,6 +101,7 @@ export function useTerminals() {
       projectId?: string;
       resumeSessionId?: string;
       workspaceId?: string;
+      provider?: string;
     }) => {
       const id = generateId();
       const cwd = options?.cwd || "/";
@@ -128,6 +131,7 @@ export function useTerminals() {
           label,
           color,
           projectId: options?.projectId,
+          provider: options?.provider,
         });
         const terminal: TerminalInfo = { ...info, workspaceId };
         setTerminals((prev) => [...prev, terminal]);
@@ -226,7 +230,23 @@ export function useTerminals() {
   // Spawn a set of persisted terminals back into their workspaces.
   const restoreTerminals = useCallback(
     async (items: PersistedTerminal[], fallbackWs: string) => {
+      // A persisted provider id may no longer exist (profile removed from
+      // providers.json). Spawning with it would fail outright, so pre-validate
+      // and fall back to the default (Claude) with a warning.
+      let knownProviders: Set<string> | null = null;
+      try {
+        knownProviders = new Set((await listProviders()).map((p) => p.id));
+      } catch (error) {
+        console.error("Failed to list providers, restoring on default:", error);
+      }
       for (const t of items) {
+        let provider = t.provider ?? undefined;
+        if (provider && knownProviders && !knownProviders.has(provider)) {
+          console.warn(
+            `Provider "${provider}" no longer exists; restoring "${t.label}" on default`
+          );
+          provider = undefined;
+        }
         try {
           await spawn({
             cwd: t.cwd,
@@ -235,6 +255,7 @@ export function useTerminals() {
             color: t.color,
             projectId: t.project_id ?? undefined,
             workspaceId: t.workspace_id ?? fallbackWs,
+            provider,
           });
         } catch (error) {
           console.error("Failed to restore terminal:", t.label, error);

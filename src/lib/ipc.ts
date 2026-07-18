@@ -18,6 +18,7 @@ export const ptySpawn = (params: {
   label: string;
   color: string;
   projectId?: string;
+  provider?: string;
 }) =>
   invoke<BackendTerminalInfo>("pty_spawn", {
     id: params.id,
@@ -26,6 +27,7 @@ export const ptySpawn = (params: {
     label: params.label,
     color: params.color,
     projectId: params.projectId ?? null,
+    provider: params.provider ?? null,
   });
 
 export const ptyWrite = (id: string, data: string) =>
@@ -38,6 +40,16 @@ export const ptyKill = (id: string) => invoke<void>("pty_kill", { id });
 
 export const getTerminals = () =>
   invoke<BackendTerminalInfo[]>("get_terminals");
+
+/** A provider profile as the frontend may see it — id, label, and context
+ *  window only. Env (which can reference secrets) stays in the backend. */
+export interface ProviderSummary {
+  id: string;
+  label: string;
+  contextWindow: number | null;
+}
+
+export const listProviders = () => invoke<ProviderSummary[]>("list_providers");
 
 /** Open a new independent app window (its own workspaces + terminals).
  *  Pass a label + geometry to recreate a saved window in place. */

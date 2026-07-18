@@ -9,6 +9,8 @@ export interface BackendTerminalInfo {
   cwd: string;
   command: string;
   project_id: string | null;
+  /** Provider profile id this terminal runs on (null = default Claude). */
+  provider: string | null;
 }
 
 /** Client-side terminal: the backend info plus which workspace tab it lives in. */
@@ -24,6 +26,7 @@ export interface PersistedTerminal {
   command: string;
   project_id: string | null;
   workspace_id: string | null;
+  provider: string | null;
 }
 
 /** A named workspace tab grouping terminals within one window. */

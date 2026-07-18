@@ -16,6 +16,11 @@ pub struct PersistedTerminal {
     /// the pre-workspaces format (those terminals land in the default workspace).
     #[serde(default)]
     pub workspace_id: Option<String>,
+    /// Provider profile id the terminal ran on (None = default Claude). Only
+    /// the id is persisted — resolved env can contain secrets and never
+    /// touches disk here.
+    #[serde(default)]
+    pub provider: Option<String>,
 }
 
 /// A named workspace — a tab grouping a set of terminals within one window.
