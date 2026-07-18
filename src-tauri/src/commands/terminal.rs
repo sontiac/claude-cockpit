@@ -14,8 +14,34 @@ pub fn pty_spawn(
     label: String,
     color: String,
     project_id: Option<String>,
+    provider: Option<String>,
 ) -> Result<TerminalInfo, CockpitError> {
-    let handle = PtyHandle::spawn(app, id.clone(), cwd, command, label, color, project_id)?;
+    // Resolve the provider profile into concrete env before spawning. Unknown
+    // ids and unresolvable secrets fail the spawn outright — a terminal that
+    // silently fell back to Anthropic would bill the wrong provider.
+    let extra_env = match provider.as_deref() {
+        None => Vec::new(),
+        Some(id) => {
+            let profiles = crate::providers::load();
+            let profile = profiles
+                .iter()
+                .find(|p| p.id == id)
+                .ok_or_else(|| CockpitError::InvalidInput(format!("unknown provider: {id}")))?;
+            crate::providers::resolve_env(&profile.env, crate::providers::secret_lookup)?
+        }
+    };
+
+    let handle = PtyHandle::spawn(
+        app,
+        id.clone(),
+        cwd,
+        command,
+        label,
+        color,
+        project_id,
+        provider,
+        extra_env,
+    )?;
     let info = handle.info.clone();
     let mut terminals = state
         .terminals

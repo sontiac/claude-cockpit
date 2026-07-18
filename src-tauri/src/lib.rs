@@ -73,6 +73,7 @@ pub fn run() {
             commands::background::list_backgrounds,
             commands::background::import_background,
             commands::background::delete_background,
+            commands::providers::list_providers,
             commands::window::open_window,
             commands::window::toggle_maximize,
             commands::window::cycle_window,

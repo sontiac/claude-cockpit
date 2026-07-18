@@ -352,6 +352,13 @@ mod tests {
     }
 
     #[test]
+    fn provider_summary_serializes_camel_case_without_env() {
+        let json = serde_json::to_string(&ProviderSummary::from(&built_ins()[0])).unwrap();
+        assert!(json.contains("\"contextWindow\":1048576"));
+        assert!(!json.contains("env"));
+    }
+
+    #[test]
     fn merge_user_file_json_shape_round_trips() {
         let json = r#"[{"id":"glm","label":"GLM","env":{"ANTHROPIC_BASE_URL":"https://example.com"},"contextWindow":131072}]"#;
         let user: Vec<Provider> = serde_json::from_str(json).unwrap();

@@ -92,6 +92,9 @@ pub struct TerminalInfo {
     pub cwd: String,
     pub command: String,
     pub project_id: Option<String>,
+    /// Provider profile id this terminal was spawned with (None = default
+    /// Claude). Persisted so the terminal restores onto the same backend.
+    pub provider: Option<String>,
 }
 
 pub struct PtyHandle {
@@ -121,6 +124,8 @@ impl PtyHandle {
         label: String,
         color: String,
         project_id: Option<String>,
+        provider: Option<String>,
+        extra_env: Vec<(String, String)>,
     ) -> Result<Self, crate::error::CockpitError> {
         let pty_system = native_pty_system();
 
@@ -196,6 +201,12 @@ impl PtyHandle {
             }
         }
 
+        // Provider profile env (already secret-resolved by the caller): points
+        // Claude Code at an alternate Anthropic-compatible backend.
+        for (key, value) in &extra_env {
+            cmd.env(key, value);
+        }
+
         // Terminal-specific overrides applied on top of the inherited env.
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
@@ -230,6 +241,7 @@ impl PtyHandle {
             cwd,
             command: cmd_str,
             project_id,
+            provider,
         };
 
         // Shared timestamp for idle detection across threads
