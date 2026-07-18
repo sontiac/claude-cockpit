@@ -4,6 +4,8 @@ interface ContextPillProps {
   tokens: number;
   model?: string | null;
   effort?: string | null;
+  /** Provider's context window; scales the badge's severity tiers. */
+  contextWindow?: number | null;
 }
 
 /**
@@ -13,8 +15,13 @@ interface ContextPillProps {
  * hide `.pill-effort` first and `.pill-model` second — tokens are always last
  * to go (and never do).
  */
-export function ContextPill({ tokens, model, effort }: ContextPillProps) {
-  const tier = contextTier(tokens);
+export function ContextPill({
+  tokens,
+  model,
+  effort,
+  contextWindow,
+}: ContextPillProps) {
+  const tier = contextTier(tokens, contextWindow);
   return (
     <span className="flex items-center gap-1.5 flex-shrink-0 min-w-0">
       {model && (

@@ -37,9 +37,24 @@ const CONTEXT_TIER_DANGER: ContextTier = {
   label: "Danger — context nearly full",
 };
 
-export function contextTier(tokens: number): ContextTier {
+/** The context window the absolute tier thresholds above are tuned for. */
+const BASELINE_CONTEXT_WINDOW = 1_048_576;
+
+/**
+ * Grade `tokens` into a severity tier. When the session's provider declares a
+ * `contextWindow`, thresholds scale proportionally so a smaller window reads
+ * honestly (200k of a 256k window is nearly full, not "healthy").
+ */
+export function contextTier(
+  tokens: number,
+  contextWindow?: number | null
+): ContextTier {
+  const scale =
+    contextWindow && contextWindow > 0
+      ? contextWindow / BASELINE_CONTEXT_WINDOW
+      : 1;
   for (const { max, tier } of CONTEXT_TIERS) {
-    if (tokens < max) return tier;
+    if (tokens < max * scale) return tier;
   }
   return CONTEXT_TIER_DANGER;
 }
@@ -52,12 +67,17 @@ export function formatTokens(tokens: number): string {
 }
 
 /**
- * Short human name for a Claude model id: "claude-opus-4-8" → "Opus 4.8",
+ * Short human name for a model id: "claude-opus-4-8" → "Opus 4.8",
  * "claude-fable-5" → "Fable 5", "claude-haiku-4-5-20251001" → "Haiku 4.5"
  * (trailing date stamps dropped, "[1m]" context suffix tolerated). Unknown
  * shapes fall back to the raw id.
  */
 export function formatModelShort(id: string): string {
+  // Kimi (Moonshot) ids: "kimi-k3" → "Kimi K3", "kimi-k2.7-code" → "Kimi K2.7"
+  // (variant suffixes like "-code" / "-turbo-preview" dropped).
+  const kimi = id.match(/^kimi-k(\d+(?:\.\d+)?)(?:-[a-z-]+)?$/);
+  if (kimi) return `Kimi K${kimi[1]}`;
+
   const m = id.replace(/\[1m\]$/, "").match(/^claude-([a-z]+)-([0-9][0-9-]*)$/);
   if (!m) return id;
   const family = m[1][0].toUpperCase() + m[1].slice(1);

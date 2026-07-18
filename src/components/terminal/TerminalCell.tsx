@@ -7,6 +7,7 @@ import { ContextPill } from "./ContextPill";
 import { ProviderChip } from "./ProviderChip";
 import { MoveToWorkspaceMenu } from "./MoveToWorkspaceMenu";
 import { useSessionContext } from "../../hooks/useSessionContext";
+import { useProviders } from "../../hooks/useProviders";
 import type { TerminalInfo, TerminalStatus, Workspace } from "../../types/terminal";
 
 interface TerminalCellProps {
@@ -49,6 +50,10 @@ export function TerminalCell({
     terminal.cwd,
     terminal.status
   );
+  const providers = useProviders();
+  const contextWindow =
+    providers.find((p) => p.id === (terminal.provider ?? "claude"))
+      ?.contextWindow ?? null;
 
   const handleSubmitRename = useCallback(() => {
     if (editName.trim()) {
@@ -133,6 +138,7 @@ export function TerminalCell({
             tokens={context.tokens}
             model={context.model}
             effort={context.effort}
+            contextWindow={contextWindow}
           />
         )}
 
