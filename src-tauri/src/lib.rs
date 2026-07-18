@@ -3,6 +3,7 @@ pub mod commands;
 pub mod error;
 pub mod notes;
 pub mod project;
+pub mod providers;
 pub mod pty;
 pub mod session;
 pub mod state;
