@@ -1,6 +1,7 @@
 import { useMemo, useRef, useCallback } from "react";
 import { Plus, LayoutGrid, StickyNote, Columns3, FileText, Timer } from "lucide-react";
 import { TerminalCanvas } from "./TerminalCanvas";
+import { ProviderMenu } from "./ProviderMenu";
 import { useCanvasLayout, tileRects } from "../../hooks/useCanvasLayout";
 import { paneCountLabel } from "../../lib/paneCounts";
 import type { CanvasPaneKind, Pane } from "../../types/pane";
@@ -15,7 +16,7 @@ interface TerminalGridProps {
   onSessionRename: (id: string, sessionName: string) => void;
   onStatusChange: (id: string, status: TerminalStatus) => void;
   onExit: (id: string, code: number | null) => void;
-  onNewTerminal: () => void;
+  onNewTerminal: (provider?: string) => void;
   onNewPane: (kind: CanvasPaneKind) => void;
   onSetPanePath: (id: string, path: string | null) => void;
   onSetPomodoroDurations: (id: string, workMinutes: number, breakMinutes: number) => void;
@@ -79,12 +80,13 @@ export function TerminalGrid({
           <p className="text-foreground-muted text-lg">Nothing open</p>
           <div className="flex items-center justify-center gap-2">
             <button
-              onClick={onNewTerminal}
+              onClick={() => onNewTerminal()}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-accent-cyan/20 text-accent-cyan hover:bg-accent-cyan/30 font-medium text-sm"
             >
               <Plus size={16} />
               New Terminal
             </button>
+            <ProviderMenu onPick={(id) => onNewTerminal(id)} />
             <button
               onClick={() => onNewPane("note")}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 text-foreground-muted hover:text-foreground hover:bg-white/10 font-medium text-sm"
@@ -162,12 +164,13 @@ export function TerminalGrid({
             <Timer size={14} />
           </button>
           <button
-            onClick={onNewTerminal}
+            onClick={() => onNewTerminal()}
             className="p-1.5 rounded-md text-foreground-muted hover:text-foreground hover:bg-white/5"
             title="New terminal (Cmd+T)"
           >
             <Plus size={14} />
           </button>
+          <ProviderMenu onPick={(id) => onNewTerminal(id)} />
         </div>
       </div>
 

@@ -4,6 +4,7 @@ import { X, Pencil, Check } from "lucide-react";
 import { StatusDot } from "../shared/StatusDot";
 import { TerminalPanel } from "./TerminalPanel";
 import { ContextPill } from "./ContextPill";
+import { ProviderChip } from "./ProviderChip";
 import { MoveToWorkspaceMenu } from "./MoveToWorkspaceMenu";
 import { useSessionContext } from "../../hooks/useSessionContext";
 import type { TerminalInfo, TerminalStatus, Workspace } from "../../types/terminal";
@@ -126,6 +127,7 @@ export function TerminalCell({
           </>
         )}
 
+        <ProviderChip provider={terminal.provider} />
         {context && context.tokens > 0 && (
           <ContextPill
             tokens={context.tokens}

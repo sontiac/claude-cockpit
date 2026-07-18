@@ -77,8 +77,8 @@ export function App() {
   const [editProject, setEditProject] = useState<Project | null>(null);
 
   const handleNewTerminal = useCallback(
-    async (workspaceId?: string) => {
-      await spawn({ workspaceId });
+    async (workspaceId?: string, provider?: string) => {
+      await spawn({ workspaceId, provider });
     },
     [spawn]
   );
@@ -418,7 +418,7 @@ export function App() {
                     onSessionRename={handleSessionRename}
                     onStatusChange={handleStatusChange}
                     onExit={handleExit}
-                    onNewTerminal={() => handleNewTerminal(ws.id)}
+                    onNewTerminal={(provider) => handleNewTerminal(ws.id, provider)}
                     onNewPane={(kind) => handleNewPane(kind, ws.id)}
                     onSetPanePath={setPanePath}
                     onSetPomodoroDurations={setPomodoroDurations}
