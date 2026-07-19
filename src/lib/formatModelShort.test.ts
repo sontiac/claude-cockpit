@@ -8,6 +8,12 @@ describe("formatModelShort", () => {
     expect(formatModelShort("kimi-k2-turbo-preview")).toBe("Kimi K2");
   });
 
+  it("formats bare Kimi-for-Coding ids, with and without [1m]", () => {
+    expect(formatModelShort("k3[1m]")).toBe("Kimi K3");
+    expect(formatModelShort("k3")).toBe("Kimi K3");
+    expect(formatModelShort("kimi-for-coding")).toBe("Kimi");
+  });
+
   it("formats current model ids", () => {
     expect(formatModelShort("claude-fable-5")).toBe("Fable 5");
     expect(formatModelShort("claude-opus-4-8")).toBe("Opus 4.8");

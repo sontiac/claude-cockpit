@@ -23,13 +23,13 @@ Claude Code honors `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`,
 and `CLAUDE_CODE_SUBAGENT_MODEL`. Moonshot exposes an Anthropic-compatible
 endpoint at `https://api.moonshot.ai/anthropic`.
 
-**Open verification item:** Moonshot's docs currently show the Claude Code
-recipe with `kimi-k2.7-code`; K3 (`kimi-k3`, 1M context, released
-2026-07-16) is so far only documented on their OpenAI-compatible endpoint.
-Verify `kimi-k3` works via `/anthropic` with a real API key during
-implementation; if not, ship the profile defaulting to `kimi-k2.7-code` and
-flip to `kimi-k3` in config when available. The model id is profile data, so
-this is a config edit, not a code change.
+**Verification (resolved 2026-07-19):** the user's key is a kimi.com
+"Kimi for Coding" subscription key, which authenticates against
+`https://api.kimi.com/coding/` with `ANTHROPIC_API_KEY` and model `k3[1m]`
+(1M context) — verified live. It does NOT work on `api.moonshot.ai/anthropic`
+(that endpoint takes Moonshot API-platform keys, configurable via
+providers.json if ever needed). The built-in `kimi` profile targets the
+Kimi-for-Coding endpoint.
 
 ## Design
 

@@ -73,10 +73,13 @@ export function formatTokens(tokens: number): string {
  * shapes fall back to the raw id.
  */
 export function formatModelShort(id: string): string {
-  // Kimi (Moonshot) ids: "kimi-k3" → "Kimi K3", "kimi-k2.7-code" → "Kimi K2.7"
-  // (variant suffixes like "-code" / "-turbo-preview" dropped).
-  const kimi = id.match(/^kimi-k(\d+(?:\.\d+)?)(?:-[a-z-]+)?$/);
+  // Kimi ids come in three shapes: Moonshot API ids ("kimi-k3",
+  // "kimi-k2.7-code" — variant suffixes dropped), bare Kimi-for-Coding ids
+  // ("k3", "k3[1m]"), and the plan alias "kimi-for-coding".
+  const bare = id.replace(/\[1m\]$/, "");
+  const kimi = bare.match(/^(?:kimi-)?k(\d+(?:\.\d+)?)(?:-[a-z-]+)?$/);
   if (kimi) return `Kimi K${kimi[1]}`;
+  if (bare.startsWith("kimi-for-coding")) return "Kimi";
 
   const m = id.replace(/\[1m\]$/, "").match(/^claude-([a-z]+)-([0-9][0-9-]*)$/);
   if (!m) return id;

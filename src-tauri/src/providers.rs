@@ -16,10 +16,10 @@ use serde::{Deserialize, Serialize};
 use crate::error::CockpitError;
 
 /// The Kimi model id every model slot of the built-in `kimi` profile points
-/// at. K3 (released 2026-07-16) is Moonshot's 1M-context flagship; if the
-/// Anthropic-compatible endpoint turns out not to serve it yet, downgrade
-/// this single constant to "kimi-k2.7-code".
-pub const KIMI_MODEL: &str = "kimi-k3";
+/// at. `k3[1m]` is the 1M-context form of K3 on the Kimi-for-Coding endpoint
+/// (the `[1m]` suffix is a Claude Code env convention, per
+/// https://www.kimi.com/code/docs/en/third-party-tools/other-coding-agents.html).
+pub const KIMI_MODEL: &str = "k3[1m]";
 
 /// A named environment preset for spawning terminals. `env` values may embed
 /// `${SECRET_NAME}` references, resolved at spawn — profiles themselves never
@@ -97,19 +97,23 @@ impl From<&Provider> for ProviderSummary {
 
 /// The profiles cockpit ships with. `claude` (first, the default) is the
 /// plain Anthropic setup — no env overrides, exactly the pre-profiles
-/// behavior. `kimi` drives Claude Code against Moonshot's
-/// Anthropic-compatible endpoint, pinning every model slot to [`KIMI_MODEL`]
-/// so background/subagent tasks don't request real Claude models from
-/// Moonshot.
+/// behavior. `kimi` drives Claude Code against the Kimi-for-Coding
+/// Anthropic-compatible endpoint (kimi.com subscription keys — verified live
+/// 2026-07-19; Moonshot API-platform keys use api.moonshot.ai/anthropic
+/// instead and can be configured via providers.json). Every model slot is
+/// pinned to [`KIMI_MODEL`] so background/subagent tasks don't request real
+/// Claude models from Kimi, and auto-compaction is aligned with K3's window.
 pub fn built_ins() -> Vec<Provider> {
     let kimi_env = [
-        ("ANTHROPIC_BASE_URL", "https://api.moonshot.ai/anthropic"),
-        ("ANTHROPIC_AUTH_TOKEN", "${MOONSHOT_API_KEY}"),
+        ("ANTHROPIC_BASE_URL", "https://api.kimi.com/coding/"),
+        ("ANTHROPIC_API_KEY", "${MOONSHOT_API_KEY}"),
         ("ANTHROPIC_MODEL", KIMI_MODEL),
+        ("ANTHROPIC_DEFAULT_FABLE_MODEL", KIMI_MODEL),
         ("ANTHROPIC_DEFAULT_OPUS_MODEL", KIMI_MODEL),
         ("ANTHROPIC_DEFAULT_SONNET_MODEL", KIMI_MODEL),
         ("ANTHROPIC_DEFAULT_HAIKU_MODEL", KIMI_MODEL),
         ("CLAUDE_CODE_SUBAGENT_MODEL", KIMI_MODEL),
+        ("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "1048576"),
     ];
     vec![
         Provider {
@@ -275,11 +279,15 @@ mod tests {
         assert!(kimi
             .env
             .iter()
-            .any(|(k, v)| k == "ANTHROPIC_BASE_URL" && v == "https://api.moonshot.ai/anthropic"));
+            .any(|(k, v)| k == "ANTHROPIC_BASE_URL" && v == "https://api.kimi.com/coding/"));
         assert!(kimi
             .env
             .iter()
-            .any(|(k, v)| k == "ANTHROPIC_AUTH_TOKEN" && v == "${MOONSHOT_API_KEY}"));
+            .any(|(k, v)| k == "ANTHROPIC_API_KEY" && v == "${MOONSHOT_API_KEY}"));
+        assert!(kimi
+            .env
+            .iter()
+            .any(|(k, v)| k == "CLAUDE_CODE_AUTO_COMPACT_WINDOW" && v == "1048576"));
         assert_eq!(kimi.context_window, Some(1_048_576));
     }
 
@@ -289,6 +297,7 @@ mod tests {
         let kimi = ps.iter().find(|p| p.id == "kimi").unwrap();
         for slot in [
             "ANTHROPIC_MODEL",
+            "ANTHROPIC_DEFAULT_FABLE_MODEL",
             "ANTHROPIC_DEFAULT_OPUS_MODEL",
             "ANTHROPIC_DEFAULT_SONNET_MODEL",
             "ANTHROPIC_DEFAULT_HAIKU_MODEL",
