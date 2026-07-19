@@ -6,6 +6,12 @@ import { useProviders } from "../../hooks/useProviders";
 interface ProviderMenuProps {
   /** Spawn a new terminal on the picked provider profile id. */
   onPick: (providerId: string) => void;
+  /** Popover heading (defaults to "New terminal"). */
+  heading?: string;
+  /** Override the trigger button's styling (e.g. sidebar hover-reveal). */
+  triggerClassName?: string;
+  /** Tooltip for the trigger button. */
+  triggerTitle?: string;
 }
 
 /**
@@ -18,7 +24,12 @@ interface ProviderMenuProps {
  * toolbar's backdrop-filter creates a stacking context that would paint the
  * canvas over an inline popover.
  */
-export function ProviderMenu({ onPick }: ProviderMenuProps) {
+export function ProviderMenu({
+  onPick,
+  heading = "New terminal",
+  triggerClassName = "p-1 -ml-1 rounded-md text-foreground-muted hover:text-foreground hover:bg-white/5",
+  triggerTitle = "New terminal with provider…",
+}: ProviderMenuProps) {
   const providers = useProviders();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -70,12 +81,12 @@ export function ProviderMenu({ onPick }: ProviderMenuProps) {
     <>
       <button
         ref={buttonRef}
-        title="New terminal with provider…"
+        title={triggerTitle}
         onClick={(e) => {
           e.stopPropagation();
           setOpen((o) => !o);
         }}
-        className="p-1 -ml-1 rounded-md text-foreground-muted hover:text-foreground hover:bg-white/5"
+        className={triggerClassName}
       >
         <ChevronDown size={12} />
       </button>
@@ -89,7 +100,7 @@ export function ProviderMenu({ onPick }: ProviderMenuProps) {
             style={{ top: pos.top, right: pos.right }}
           >
             <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-foreground-muted/60">
-              New terminal
+              {heading}
             </div>
             {providers.map((p) => (
               <button

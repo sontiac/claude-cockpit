@@ -214,7 +214,7 @@ export function App() {
   }, [panes, workspaces]);
 
   const handleLaunchProject = useCallback(
-    async (project: Project) => {
+    async (project: Project, provider?: string) => {
       play("launch");
       for (let i = 0; i < project.terminals; i++) {
         await spawn({
@@ -223,6 +223,7 @@ export function App() {
           label: `${project.name} ${project.terminals > 1 ? i + 1 : ""}`.trim(),
           color: project.color,
           projectId: project.id,
+          provider,
         });
       }
     },

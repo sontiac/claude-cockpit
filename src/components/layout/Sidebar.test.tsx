@@ -39,6 +39,10 @@ const sessions: Session[] = [
 vi.mock("../../lib/ipc", () => ({
   getSessions: vi.fn(async () => sessions),
   setSessionStarred: vi.fn(async () => undefined),
+  listProviders: vi.fn(async () => [
+    { id: "claude", label: "Claude", contextWindow: 1048576 },
+    { id: "kimi", label: "Kimi", contextWindow: 1048576 },
+  ]),
 }));
 
 import { getSessions, setSessionStarred } from "../../lib/ipc";
@@ -129,5 +133,50 @@ describe("Sidebar session starring", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("Sidebar project provider launch", () => {
+  it("launches a project on a picked provider", async () => {
+    const onLaunchProject = vi.fn();
+    render(
+      <Sidebar
+        projects={[project]}
+        onLaunchProject={onLaunchProject}
+        onAddProject={vi.fn()}
+        onEditProject={vi.fn()}
+        onDeleteProject={vi.fn()}
+        onReorderProjects={vi.fn()}
+        onNewTerminal={vi.fn()}
+        onNewNote={vi.fn()}
+        onResumeSession={vi.fn()}
+      />
+    );
+    // The chevron appears once the (async) provider list arrives.
+    await waitFor(() =>
+      expect(screen.getByTitle("Launch with provider…")).toBeInTheDocument()
+    );
+    fireEvent.click(screen.getByTitle("Launch with provider…"));
+    fireEvent.click(screen.getByText("Kimi"));
+    expect(onLaunchProject).toHaveBeenCalledWith(project, "kimi");
+  });
+
+  it("plain Play launch passes no provider", () => {
+    const onLaunchProject = vi.fn();
+    render(
+      <Sidebar
+        projects={[project]}
+        onLaunchProject={onLaunchProject}
+        onAddProject={vi.fn()}
+        onEditProject={vi.fn()}
+        onDeleteProject={vi.fn()}
+        onReorderProjects={vi.fn()}
+        onNewTerminal={vi.fn()}
+        onNewNote={vi.fn()}
+        onResumeSession={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByTitle("Launch 1 terminal"));
+    expect(onLaunchProject).toHaveBeenCalledWith(project, undefined);
   });
 });

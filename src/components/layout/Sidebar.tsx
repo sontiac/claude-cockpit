@@ -15,13 +15,14 @@ import {
   Star,
 } from "lucide-react";
 import type { Project } from "../../types/project";
+import { ProviderMenu } from "../terminal/ProviderMenu";
 import type { Session } from "../../types/session";
 import { formatRelativeTime } from "../../lib/constants";
 import { getSessions, setSessionStarred } from "../../lib/ipc";
 
 interface SidebarProps {
   projects: Project[];
-  onLaunchProject: (project: Project) => void;
+  onLaunchProject: (project: Project, provider?: string) => void;
   onAddProject: () => void;
   onEditProject: (project: Project) => void;
   onDeleteProject: (project: Project) => void;
@@ -73,7 +74,7 @@ function ProjectSection({
   project: Project;
   isDragging: boolean;
   isDragOver: boolean;
-  onLaunch: () => void;
+  onLaunch: (provider?: string) => void;
   onResume: (sessionId: string, cwd: string, label: string) => void;
   onContextMenu: (e: React.MouseEvent) => void;
   dragHandleProps: React.HTMLAttributes<HTMLButtonElement> & { draggable: boolean };
@@ -173,12 +174,18 @@ function ProjectSection({
           </div>
         </button>
         <button
-          onClick={onLaunch}
-          className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-accent-cyan/20 text-foreground-muted hover:text-accent-cyan flex-shrink-0 mr-1"
+          onClick={() => onLaunch()}
+          className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-accent-cyan/20 text-foreground-muted hover:text-accent-cyan flex-shrink-0"
           title={`Launch ${project.terminals} terminal${project.terminals > 1 ? "s" : ""}`}
         >
           <Play size={12} />
         </button>
+        <ProviderMenu
+          heading={`Launch ${project.name} on`}
+          triggerTitle="Launch with provider…"
+          triggerClassName="p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-white/10 text-foreground-muted hover:text-foreground flex-shrink-0 mr-1"
+          onPick={(id) => onLaunch(id)}
+        />
       </div>
 
       {/* Sessions dropdown — capped to ~8 visible rows; the rest scroll. */}
@@ -327,7 +334,7 @@ export function Sidebar({
             project={project}
             isDragging={dragIndex === index}
             isDragOver={overIndex === index && dragIndex !== index}
-            onLaunch={() => onLaunchProject(project)}
+            onLaunch={(provider) => onLaunchProject(project, provider)}
             onResume={onResumeSession}
             onContextMenu={(e) => {
               e.preventDefault();
