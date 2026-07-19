@@ -76,13 +76,18 @@ mod env_pairs {
     }
 }
 
-/// The id/label/window subset of a profile that is safe to hand the frontend.
+/// The subset of a profile that is safe to hand the frontend: id, label,
+/// context window, and the model id the profile pins (model ids are not
+/// secrets — env *values* like keys stay in the backend). The model lets the
+/// UI map a session transcript's recorded model back to the provider it ran
+/// on, so resuming a chat resumes it on the same backend.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderSummary {
     pub id: String,
     pub label: String,
     pub context_window: Option<u64>,
+    pub model: Option<String>,
 }
 
 impl From<&Provider> for ProviderSummary {
@@ -91,6 +96,11 @@ impl From<&Provider> for ProviderSummary {
             id: p.id.clone(),
             label: p.label.clone(),
             context_window: p.context_window,
+            model: p
+                .env
+                .iter()
+                .find(|(k, _)| k == "ANTHROPIC_MODEL")
+                .map(|(_, v)| v.clone()),
         }
     }
 }
@@ -365,6 +375,15 @@ mod tests {
         let json = serde_json::to_string(&ProviderSummary::from(&built_ins()[0])).unwrap();
         assert!(json.contains("\"contextWindow\":1048576"));
         assert!(!json.contains("env"));
+    }
+
+    #[test]
+    fn provider_summary_exposes_the_pinned_model() {
+        let ps = built_ins();
+        let kimi = ProviderSummary::from(ps.iter().find(|p| p.id == "kimi").unwrap());
+        assert_eq!(kimi.model.as_deref(), Some(KIMI_MODEL));
+        let claude = ProviderSummary::from(&ps[0]);
+        assert_eq!(claude.model, None);
     }
 
     #[test]

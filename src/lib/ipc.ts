@@ -41,12 +41,15 @@ export const ptyKill = (id: string) => invoke<void>("pty_kill", { id });
 export const getTerminals = () =>
   invoke<BackendTerminalInfo[]>("get_terminals");
 
-/** A provider profile as the frontend may see it — id, label, and context
- *  window only. Env (which can reference secrets) stays in the backend. */
+/** A provider profile as the frontend may see it — id, label, context
+ *  window, and pinned model id. Env values (which can reference secrets)
+ *  stay in the backend. */
 export interface ProviderSummary {
   id: string;
   label: string;
   contextWindow: number | null;
+  /** The model the profile pins (its ANTHROPIC_MODEL), null for default. */
+  model: string | null;
 }
 
 export const listProviders = () => invoke<ProviderSummary[]>("list_providers");

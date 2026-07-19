@@ -40,8 +40,8 @@ vi.mock("../../lib/ipc", () => ({
   getSessions: vi.fn(async () => sessions),
   setSessionStarred: vi.fn(async () => undefined),
   listProviders: vi.fn(async () => [
-    { id: "claude", label: "Claude", contextWindow: 1048576 },
-    { id: "kimi", label: "Kimi", contextWindow: 1048576 },
+    { id: "claude", label: "Claude", contextWindow: 1048576, model: null },
+    { id: "kimi", label: "Kimi", contextWindow: 1048576, model: "k3[1m]" },
   ]),
 }));
 
@@ -159,6 +159,40 @@ describe("Sidebar project provider launch", () => {
     fireEvent.click(screen.getByTitle("Launch with provider…"));
     fireEvent.click(screen.getByText("Kimi"));
     expect(onLaunchProject).toHaveBeenCalledWith(project, "kimi");
+  });
+
+  it("resumes a session on the provider its recorded model maps to", async () => {
+    const onResumeSession = vi.fn();
+    const kimiSession: Session = {
+      ...sessions[1],
+      session_id: "s-kimi",
+      custom_title: "Kimi chat",
+      model: "k3",
+    };
+    vi.mocked(getSessions).mockResolvedValue([kimiSession]);
+    render(
+      <Sidebar
+        projects={[project]}
+        onLaunchProject={vi.fn()}
+        onAddProject={vi.fn()}
+        onEditProject={vi.fn()}
+        onDeleteProject={vi.fn()}
+        onReorderProjects={vi.fn()}
+        onNewTerminal={vi.fn()}
+        onNewNote={vi.fn()}
+        onResumeSession={onResumeSession}
+      />
+    );
+    fireEvent.click(screen.getByText("proj")); // expand sessions
+    await waitFor(() => expect(screen.getByText("Kimi chat")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Kimi chat"));
+    expect(onResumeSession).toHaveBeenCalledWith(
+      "s-kimi",
+      "/tmp/proj",
+      expect.stringContaining("Kimi chat"),
+      "kimi"
+    );
+    vi.mocked(getSessions).mockResolvedValue(sessions);
   });
 
   it("plain Play launch passes no provider", () => {

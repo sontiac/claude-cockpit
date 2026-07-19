@@ -4,8 +4,8 @@ import { ProviderChip } from "./ProviderChip";
 
 vi.mock("../../hooks/useProviders", () => ({
   useProviders: () => [
-    { id: "claude", label: "Claude", contextWindow: 1048576 },
-    { id: "kimi", label: "Kimi", contextWindow: 1048576 },
+    { id: "claude", label: "Claude", contextWindow: 1048576, model: null },
+    { id: "kimi", label: "Kimi", contextWindow: 1048576, model: "k3[1m]" },
   ],
 }));
 

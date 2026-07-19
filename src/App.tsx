@@ -231,12 +231,13 @@ export function App() {
   );
 
   const handleResumeSession = useCallback(
-    async (sessionId: string, cwd: string, label: string) => {
+    async (sessionId: string, cwd: string, label: string, provider?: string) => {
       play("click");
       await spawn({
         cwd,
         resumeSessionId: sessionId,
         label,
+        provider,
       });
     },
     [spawn, play]

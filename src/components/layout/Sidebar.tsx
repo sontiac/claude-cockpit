@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import type { Project } from "../../types/project";
 import { ProviderMenu } from "../terminal/ProviderMenu";
+import { useProviders } from "../../hooks/useProviders";
+import { providerForModel } from "../../lib/providerMatch";
 import type { Session } from "../../types/session";
 import { formatRelativeTime } from "../../lib/constants";
 import { getSessions, setSessionStarred } from "../../lib/ipc";
@@ -29,7 +31,12 @@ interface SidebarProps {
   onReorderProjects: (orderedIds: string[]) => void;
   onNewTerminal: () => void;
   onNewNote: () => void;
-  onResumeSession: (sessionId: string, cwd: string, label: string) => void;
+  onResumeSession: (
+    sessionId: string,
+    cwd: string,
+    label: string,
+    provider?: string
+  ) => void;
 }
 
 // While a project is expanded, re-read its sessions on this interval so newly
@@ -75,7 +82,12 @@ function ProjectSection({
   isDragging: boolean;
   isDragOver: boolean;
   onLaunch: (provider?: string) => void;
-  onResume: (sessionId: string, cwd: string, label: string) => void;
+  onResume: (
+    sessionId: string,
+    cwd: string,
+    label: string,
+    provider?: string
+  ) => void;
   onContextMenu: (e: React.MouseEvent) => void;
   dragHandleProps: React.HTMLAttributes<HTMLButtonElement> & { draggable: boolean };
   rowDragProps: React.HTMLAttributes<HTMLDivElement>;
@@ -83,6 +95,7 @@ function ProjectSection({
   const [expanded, setExpanded] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(false);
+  const providers = useProviders();
   // Bumped on every user mutation (star toggle). A poll whose getSessions
   // request was already in flight when the user clicked holds a pre-mutation
   // snapshot; comparing the version captured before the await against the
@@ -208,7 +221,14 @@ function ProjectSection({
                     const label = session.custom_title
                       ? `${project.name}: ${session.custom_title}`
                       : `${project.name}: ${sessionTitle.slice(0, 40)}`;
-                    onResume(session.session_id, session.cwd, label);
+                    // Resume the chat on the provider it originally ran on
+                    // (matched via the transcript's recorded model id).
+                    onResume(
+                      session.session_id,
+                      session.cwd,
+                      label,
+                      providerForModel(session.model, providers)
+                    );
                   }}
                   className="w-full text-left px-2 py-1.5 pr-7 rounded-md hover:bg-white/5"
                 >

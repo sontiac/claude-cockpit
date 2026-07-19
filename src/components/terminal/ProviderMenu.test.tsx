@@ -4,8 +4,8 @@ import { ProviderMenu } from "./ProviderMenu";
 
 const mockProviders = vi.hoisted(() => ({
   list: [
-    { id: "claude", label: "Claude", contextWindow: 1048576 },
-    { id: "kimi", label: "Kimi", contextWindow: 1048576 },
+    { id: "claude", label: "Claude", contextWindow: 1048576, model: null },
+    { id: "kimi", label: "Kimi", contextWindow: 1048576, model: "k3[1m]" },
   ],
 }));
 
@@ -26,13 +26,13 @@ describe("ProviderMenu", () => {
 
   it("renders nothing when only one provider exists", () => {
     mockProviders.list = [
-      { id: "claude", label: "Claude", contextWindow: 1048576 },
+      { id: "claude", label: "Claude", contextWindow: 1048576, model: null },
     ];
     const { container } = render(<ProviderMenu onPick={vi.fn()} />);
     expect(container.innerHTML).toBe("");
     mockProviders.list = [
-      { id: "claude", label: "Claude", contextWindow: 1048576 },
-      { id: "kimi", label: "Kimi", contextWindow: 1048576 },
+      { id: "claude", label: "Claude", contextWindow: 1048576, model: null },
+      { id: "kimi", label: "Kimi", contextWindow: 1048576, model: "k3[1m]" },
     ];
   });
 });
