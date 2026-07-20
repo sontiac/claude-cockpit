@@ -72,6 +72,12 @@ pub fn open_window(
         .min_inner_size(800.0, 600.0)
         .decorations(false)
         .transparent(true)
+        // Tauri's native drag-drop handler swallows DOM dragover/drop on macOS
+        // (wry overrides NSDraggingDestination without forwarding to WKWebView),
+        // which kills HTML5 drag-and-drop — the sidebar and workspace-bar
+        // reordering need it. Nothing accepts OS file drops, so disable it.
+        // Keep in sync with dragDropEnabled=false in tauri.conf.json.
+        .disable_drag_drop_handler()
         .build()
         .map_err(|e| CockpitError::Window(e.to_string()))?;
 

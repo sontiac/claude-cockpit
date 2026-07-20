@@ -44,6 +44,7 @@ export function App() {
     createWorkspace,
     renameWorkspace,
     deleteWorkspace,
+    reorderWorkspaces,
   } = useTerminals();
 
   const {
@@ -386,6 +387,7 @@ export function App() {
             onCreate={createWorkspace}
             onRename={renameWorkspace}
             onDelete={handleDeleteWorkspace}
+            onReorder={reorderWorkspaces}
             onNewWindow={() => openWindow().catch(console.error)}
           />
 

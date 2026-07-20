@@ -227,6 +227,23 @@ export function useTerminals() {
     });
   }, []);
 
+  // Reorder the workspace tabs. Order persists with the window state, so it
+  // survives restarts like everything else about a workspace.
+  const reorderWorkspaces = useCallback((orderedIds: string[]) => {
+    setWorkspaces((prev) => {
+      const byId = new Map(prev.map((w) => [w.id, w]));
+      const next = orderedIds
+        .map((id) => byId.get(id))
+        .filter((w): w is Workspace => w !== undefined);
+      // Keep any workspace not present in orderedIds (shouldn't happen, but is
+      // cheap insurance against dropping a tab).
+      for (const w of prev) {
+        if (!orderedIds.includes(w.id)) next.push(w);
+      }
+      return next;
+    });
+  }, []);
+
   // Spawn a set of persisted terminals back into their workspaces.
   const restoreTerminals = useCallback(
     async (items: PersistedTerminal[], fallbackWs: string) => {
@@ -450,5 +467,6 @@ export function useTerminals() {
     createWorkspace,
     renameWorkspace,
     deleteWorkspace,
+    reorderWorkspaces,
   };
 }

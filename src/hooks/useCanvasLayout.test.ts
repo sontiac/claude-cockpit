@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { renderHook } from "@testing-library/react";
+import { renderHook, act } from "@testing-library/react";
 import { tileRects, MIN_W, MIN_H, useCanvasLayout } from "./useCanvasLayout";
 
 describe("tileRects columns preset (cols = n)", () => {
@@ -68,11 +68,12 @@ describe("tileRects when the viewport is too small to fit every pane", () => {
   });
 });
 
-describe("first-pane fill seeding", () => {
+describe("pristine-canvas auto-tiling", () => {
+  const surface = () => ({ w: 1000, h: 600 });
+
   it("seeds the first pane of an empty canvas to fill the surface", () => {
     const { result, rerender } = renderHook(
-      ({ ids }: { ids: string[] }) =>
-        useCanvasLayout(ids, () => ({ w: 1000, h: 600 })),
+      ({ ids }: { ids: string[] }) => useCanvasLayout(ids, surface),
       { initialProps: { ids: [] as string[] } }
     );
     rerender({ ids: ["a"] });
@@ -82,17 +83,66 @@ describe("first-pane fill seeding", () => {
     );
   });
 
-  it("seeds later panes with the staggered default, not the fill", () => {
+  it("tiles panes arriving one by one into full-height columns", () => {
+    // Session restore spawns terminals sequentially — each arrival re-tiles
+    // the whole canvas while it's untouched, so a restored workspace lands as
+    // full-height columns, not a staggered pile.
     const { result, rerender } = renderHook(
-      ({ ids }: { ids: string[] }) =>
-        useCanvasLayout(ids, () => ({ w: 1000, h: 600 })),
+      ({ ids }: { ids: string[] }) => useCanvasLayout(ids, surface),
       { initialProps: { ids: [] as string[] } }
     );
     rerender({ ids: ["a"] });
     rerender({ ids: ["a", "b"] });
-    const b = result.current.layout["b"];
-    expect(b.w).toBe(520); // DEFAULT_W stagger, not a fill
-    expect(b.h).toBe(340);
+    rerender({ ids: ["a", "b", "c"] });
+    expect(result.current.layout).toEqual(
+      tileRects(["a", "b", "c"], 3, 1000, 600)
+    );
+  });
+
+  it("tiles a batch arriving at once into full-height columns", () => {
+    const { result, rerender } = renderHook(
+      ({ ids }: { ids: string[] }) => useCanvasLayout(ids, surface),
+      { initialProps: { ids: [] as string[] } }
+    );
+    rerender({ ids: ["a", "b"] });
+    expect(result.current.layout).toEqual(tileRects(["a", "b"], 2, 1000, 600));
+  });
+
+  it("stops auto-tiling once a pane is manually moved or resized", () => {
+    const { result, rerender } = renderHook(
+      ({ ids }: { ids: string[] }) => useCanvasLayout(ids, surface),
+      { initialProps: { ids: [] as string[] } }
+    );
+    rerender({ ids: ["a", "b"] });
+    const moved = { x: 40, y: 40, w: 300, h: 200 };
+    act(() => result.current.setRect("a", moved));
+    rerender({ ids: ["a", "b", "c"] });
+    // The hand-placed pane keeps its rect; the newcomer staggers instead of
+    // re-tiling everything.
+    expect(result.current.layout["a"]).toEqual(moved);
+    expect(result.current.layout["c"].w).toBe(520);
+    expect(result.current.layout["c"].h).toBe(340);
+  });
+
+  it("stops auto-tiling once an arrange preset has been applied", () => {
+    const { result, rerender } = renderHook(
+      ({ ids }: { ids: string[] }) => useCanvasLayout(ids, surface),
+      { initialProps: { ids: [] as string[] } }
+    );
+    rerender({ ids: ["a", "b"] });
+    act(() => result.current.setAll(tileRects(["a", "b"], 1, 1000, 600)));
+    rerender({ ids: ["a", "b", "c"] });
+    expect(result.current.layout["c"].w).toBe(520);
+  });
+
+  it("re-tiles the remaining panes when one closes while untouched", () => {
+    const { result, rerender } = renderHook(
+      ({ ids }: { ids: string[] }) => useCanvasLayout(ids, surface),
+      { initialProps: { ids: [] as string[] } }
+    );
+    rerender({ ids: ["a", "b", "c"] });
+    rerender({ ids: ["a", "b"] });
+    expect(result.current.layout).toEqual(tileRects(["a", "b"], 2, 1000, 600));
   });
 
   it("falls back to the staggered seed when the surface size is unknown", () => {
@@ -102,16 +152,5 @@ describe("first-pane fill seeding", () => {
     );
     rerender({ ids: ["a"] });
     expect(result.current.layout["a"].w).toBe(520);
-  });
-
-  it("does not fill when several panes appear at once (session restore)", () => {
-    const { result, rerender } = renderHook(
-      ({ ids }: { ids: string[] }) =>
-        useCanvasLayout(ids, () => ({ w: 1000, h: 600 })),
-      { initialProps: { ids: [] as string[] } }
-    );
-    rerender({ ids: ["a", "b"] });
-    expect(result.current.layout["a"].w).toBe(520);
-    expect(result.current.layout["b"].w).toBe(520);
   });
 });

@@ -84,12 +84,18 @@ export function tileRects(
  * Manages free-form canvas geometry (position + size) for a set of terminals,
  * keyed by terminal id.
  *
- * New ids are seeded into a loose grid so a just-spawned terminal lands in a
- * sensible, non-overlapping spot the user can then drag; ids that disappear are
- * pruned. Geometry lives in memory for the session — terminal ids are
- * regenerated on each app launch, so there is nothing stable to persist against
- * yet (cross-restart layout persistence would need geometry threaded through the
- * workspace snapshot, which is a separate change).
+ * While the canvas is *pristine* — the user has never moved, resized, or
+ * arranged a pane on it — membership changes re-tile everything into
+ * full-height columns fitting the surface (the "fit all" preset). Session
+ * restore spawns panes one at a time, so this is what makes a reopened
+ * workspace land as tidy columns; it also means panes added to an untouched
+ * canvas keep it tiled. After the first manual adjustment, new ids are seeded
+ * into a loose grid so a just-spawned terminal lands in a sensible,
+ * non-overlapping spot without disturbing the user's layout; ids that
+ * disappear are pruned. Geometry lives in memory for the session — terminal
+ * ids are regenerated on each app launch, so there is nothing stable to
+ * persist against yet (cross-restart layout persistence would need geometry
+ * threaded through the workspace snapshot, which is a separate change).
  */
 export function useCanvasLayout(
   ids: string[],
@@ -102,45 +108,42 @@ export function useCanvasLayout(
   const getSurfaceSizeRef = useRef(getSurfaceSize);
   getSurfaceSizeRef.current = getSurfaceSize;
 
+  // True until the user drags, resizes, or arranges — the auto-tiling gate.
+  const pristineRef = useRef(true);
+
   useEffect(() => {
     setLayout((prev) => {
-      const next: Record<string, Rect> = {};
-      let seedCount = Object.keys(prev).length;
-      // A single pane arriving on an empty canvas fills the visible surface —
-      // same geometry as the "1" arrange preset — instead of the small
-      // staggered seed. Multiple panes arriving at once (session restore) and
-      // every later pane keep the staggered seeding.
-      const fillFirst = seedCount === 0 && ids.length === 1;
-      for (const id of ids) {
-        if (prev[id]) {
-          next[id] = prev[id];
-          continue;
-        }
-        if (fillFirst) {
-          const size = getSurfaceSizeRef.current?.() ?? null;
-          if (size && size.w > 0 && size.h > 0) {
-            next[id] = tileRects([id], 1, size.w, size.h)[id];
-            continue;
-          }
-        }
-        next[id] = seedRect(seedCount++);
-      }
       // Only replace state if membership actually changed, so unrelated
       // re-renders don't churn object identity.
       const sameKeys =
-        Object.keys(next).length === Object.keys(prev).length &&
-        ids.every((id) => prev[id]);
-      return sameKeys ? prev : next;
+        Object.keys(prev).length === ids.length && ids.every((id) => prev[id]);
+      if (sameKeys) return prev;
+
+      if (pristineRef.current) {
+        const size = getSurfaceSizeRef.current?.() ?? null;
+        if (size && size.w > 0 && size.h > 0) {
+          return tileRects(ids, ids.length, size.w, size.h);
+        }
+      }
+
+      const next: Record<string, Rect> = {};
+      let seedCount = Object.keys(prev).length;
+      for (const id of ids) {
+        next[id] = prev[id] ?? seedRect(seedCount++);
+      }
+      return next;
     });
   }, [ids]);
 
   const setRect = useCallback((id: string, rect: Rect) => {
+    pristineRef.current = false;
     setLayout((prev) => ({ ...prev, [id]: rect }));
   }, []);
 
   // Replace the geometry of several windows at once (used by the arrange/tidy
   // presets). Ids not present in `rects` keep their current geometry.
   const setAll = useCallback((rects: Record<string, Rect>) => {
+    pristineRef.current = false;
     setLayout((prev) => ({ ...prev, ...rects }));
   }, []);
 

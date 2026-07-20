@@ -136,6 +136,43 @@ describe("Sidebar session starring", () => {
   });
 });
 
+describe("Sidebar project reordering", () => {
+  // Requires dragDropEnabled=false in tauri.conf.json (and
+  // disable_drag_drop_handler in open_window) — with Tauri's native handler
+  // on, DOM drop events never fire on macOS and this flow is dead in the app
+  // no matter what the React handlers do.
+  it("reorders projects when a row is dragged onto another", () => {
+    const projects = [
+      { ...project, id: "p1", name: "alpha" },
+      { ...project, id: "p2", name: "beta" },
+      { ...project, id: "p3", name: "gamma" },
+    ];
+    const onReorderProjects = vi.fn();
+    render(
+      <Sidebar
+        projects={projects}
+        onLaunchProject={vi.fn()}
+        onAddProject={vi.fn()}
+        onEditProject={vi.fn()}
+        onDeleteProject={vi.fn()}
+        onReorderProjects={onReorderProjects}
+        onNewTerminal={vi.fn()}
+        onNewNote={vi.fn()}
+        onResumeSession={vi.fn()}
+      />
+    );
+    const dt = { effectAllowed: "", dropEffect: "", setData: vi.fn() };
+    const handles = screen.getAllByTitle("Drag to reorder");
+    fireEvent.dragStart(handles[0], { dataTransfer: dt });
+    expect(dt.setData).toHaveBeenCalledWith("text/plain", "p1");
+    // Drop anywhere inside the "gamma" row — the drop handler sits on the row
+    // and the event bubbles.
+    fireEvent.dragOver(screen.getByText("gamma"), { dataTransfer: dt });
+    fireEvent.drop(screen.getByText("gamma"), { dataTransfer: dt });
+    expect(onReorderProjects).toHaveBeenCalledWith(["p2", "p3", "p1"]);
+  });
+});
+
 describe("Sidebar project provider launch", () => {
   it("launches a project on a picked provider", async () => {
     const onLaunchProject = vi.fn();
