@@ -69,14 +69,19 @@ describe("tileRects when the viewport is too small to fit every pane", () => {
 });
 
 describe("pristine-canvas auto-tiling", () => {
-  const surface = () => ({ w: 1000, h: 600 });
+  const size = { width: 1000, height: 600 };
+
+  function renderLayout(initialIds: string[] = []) {
+    return renderHook(
+      ({ ids, surface }: { ids: string[]; surface: typeof size }) =>
+        useCanvasLayout(ids, surface),
+      { initialProps: { ids: initialIds, surface: size } }
+    );
+  }
 
   it("seeds the first pane of an empty canvas to fill the surface", () => {
-    const { result, rerender } = renderHook(
-      ({ ids }: { ids: string[] }) => useCanvasLayout(ids, surface),
-      { initialProps: { ids: [] as string[] } }
-    );
-    rerender({ ids: ["a"] });
+    const { result, rerender } = renderLayout();
+    rerender({ ids: ["a"], surface: size });
     // tileRects([a], 1, 1000, 600): full surface minus margins.
     expect(result.current.layout["a"]).toEqual(
       tileRects(["a"], 1, 1000, 600)["a"]
@@ -87,36 +92,41 @@ describe("pristine-canvas auto-tiling", () => {
     // Session restore spawns terminals sequentially — each arrival re-tiles
     // the whole canvas while it's untouched, so a restored workspace lands as
     // full-height columns, not a staggered pile.
-    const { result, rerender } = renderHook(
-      ({ ids }: { ids: string[] }) => useCanvasLayout(ids, surface),
-      { initialProps: { ids: [] as string[] } }
-    );
-    rerender({ ids: ["a"] });
-    rerender({ ids: ["a", "b"] });
-    rerender({ ids: ["a", "b", "c"] });
+    const { result, rerender } = renderLayout();
+    rerender({ ids: ["a"], surface: size });
+    rerender({ ids: ["a", "b"], surface: size });
+    rerender({ ids: ["a", "b", "c"], surface: size });
     expect(result.current.layout).toEqual(
       tileRects(["a", "b", "c"], 3, 1000, 600)
     );
   });
 
-  it("tiles a batch arriving at once into full-height columns", () => {
-    const { result, rerender } = renderHook(
-      ({ ids }: { ids: string[] }) => useCanvasLayout(ids, surface),
-      { initialProps: { ids: [] as string[] } }
-    );
-    rerender({ ids: ["a", "b"] });
-    expect(result.current.layout).toEqual(tileRects(["a", "b"], 2, 1000, 600));
+  it("re-tiles when the surface grows while untouched", () => {
+    // The reopen sequence: panes restore while the window still has its
+    // default size, THEN the saved geometry / a maximize lands. An untouched
+    // canvas must follow the surface, or restored panes stay small.
+    const { result, rerender } = renderLayout();
+    rerender({ ids: ["a", "b"], surface: size });
+    const grown = { width: 1600, height: 900 };
+    rerender({ ids: ["a", "b"], surface: grown });
+    expect(result.current.layout).toEqual(tileRects(["a", "b"], 2, 1600, 900));
+  });
+
+  it("does not re-tile on surface changes after a manual adjustment", () => {
+    const { result, rerender } = renderLayout();
+    rerender({ ids: ["a", "b"], surface: size });
+    const moved = { x: 40, y: 40, w: 300, h: 200 };
+    act(() => result.current.setRect("a", moved));
+    rerender({ ids: ["a", "b"], surface: { width: 1600, height: 900 } });
+    expect(result.current.layout["a"]).toEqual(moved);
   });
 
   it("stops auto-tiling once a pane is manually moved or resized", () => {
-    const { result, rerender } = renderHook(
-      ({ ids }: { ids: string[] }) => useCanvasLayout(ids, surface),
-      { initialProps: { ids: [] as string[] } }
-    );
-    rerender({ ids: ["a", "b"] });
+    const { result, rerender } = renderLayout();
+    rerender({ ids: ["a", "b"], surface: size });
     const moved = { x: 40, y: 40, w: 300, h: 200 };
     act(() => result.current.setRect("a", moved));
-    rerender({ ids: ["a", "b", "c"] });
+    rerender({ ids: ["a", "b", "c"], surface: size });
     // The hand-placed pane keeps its rect; the newcomer staggers instead of
     // re-tiling everything.
     expect(result.current.layout["a"]).toEqual(moved);
@@ -125,32 +135,32 @@ describe("pristine-canvas auto-tiling", () => {
   });
 
   it("stops auto-tiling once an arrange preset has been applied", () => {
-    const { result, rerender } = renderHook(
-      ({ ids }: { ids: string[] }) => useCanvasLayout(ids, surface),
-      { initialProps: { ids: [] as string[] } }
-    );
-    rerender({ ids: ["a", "b"] });
+    const { result, rerender } = renderLayout();
+    rerender({ ids: ["a", "b"], surface: size });
     act(() => result.current.setAll(tileRects(["a", "b"], 1, 1000, 600)));
-    rerender({ ids: ["a", "b", "c"] });
+    rerender({ ids: ["a", "b", "c"], surface: size });
     expect(result.current.layout["c"].w).toBe(520);
   });
 
   it("re-tiles the remaining panes when one closes while untouched", () => {
-    const { result, rerender } = renderHook(
-      ({ ids }: { ids: string[] }) => useCanvasLayout(ids, surface),
-      { initialProps: { ids: [] as string[] } }
-    );
-    rerender({ ids: ["a", "b", "c"] });
-    rerender({ ids: ["a", "b"] });
+    const { result, rerender } = renderLayout();
+    rerender({ ids: ["a", "b", "c"], surface: size });
+    rerender({ ids: ["a", "b"], surface: size });
     expect(result.current.layout).toEqual(tileRects(["a", "b"], 2, 1000, 600));
   });
 
-  it("falls back to the staggered seed when the surface size is unknown", () => {
+  it("seeds staggered while unmeasured, then tiles on first measurement", () => {
+    // ResizeObserver delivers the first surface measurement asynchronously —
+    // {0,0} means "unknown", and the first real size must re-tile.
+    const unknown = { width: 0, height: 0 };
     const { result, rerender } = renderHook(
-      ({ ids }: { ids: string[] }) => useCanvasLayout(ids, () => null),
-      { initialProps: { ids: [] as string[] } }
+      ({ ids, surface }: { ids: string[]; surface: typeof size }) =>
+        useCanvasLayout(ids, surface),
+      { initialProps: { ids: [] as string[], surface: unknown } }
     );
-    rerender({ ids: ["a"] });
+    rerender({ ids: ["a"], surface: unknown });
     expect(result.current.layout["a"].w).toBe(520);
+    rerender({ ids: ["a"], surface: size });
+    expect(result.current.layout).toEqual(tileRects(["a"], 1, 1000, 600));
   });
 });

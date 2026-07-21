@@ -11,7 +11,7 @@ pub mod stats;
 pub mod workspace;
 
 use state::AppState;
-use tauri::Manager;
+use tauri::{Manager, PhysicalPosition, PhysicalSize};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -37,6 +37,20 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::new())
+        // Restore the main window's saved frame before the frontend runs.
+        // Secondary windows get theirs when open_window recreates them; the
+        // main window is created from tauri.conf.json's default size, so
+        // without this every reopen starts at 1280x800 — and the session
+        // restore would tile panes against that small surface.
+        .setup(|app| {
+            if let Some(g) = workspace::store::get_window_state("main").geometry {
+                if let Some(win) = app.get_webview_window("main") {
+                    let _ = win.set_size(PhysicalSize::new(g.width, g.height));
+                    let _ = win.set_position(PhysicalPosition::new(g.x, g.y));
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::terminal::pty_spawn,
             commands::terminal::pty_write,

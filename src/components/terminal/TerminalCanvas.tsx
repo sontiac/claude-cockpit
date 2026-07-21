@@ -13,8 +13,10 @@ interface TerminalCanvasProps {
   activeId: string | null;
   layout: Record<string, Rect>;
   setRect: (id: string, rect: Rect) => void;
-  /** Ref to the scrollable surface, so the parent can measure it for arrange. */
-  surfaceRef: React.RefObject<HTMLDivElement | null>;
+  /** Ref to the scrollable surface, so the parent can measure it for arrange
+   *  and track its size (a callback ref — the parent holds the element in
+   *  state so observation survives unmount/remount). */
+  surfaceRef: React.Ref<HTMLDivElement>;
   onSelect: (id: string) => void;
   onClosePane: (id: string) => void;
   onRenamePane: (id: string, label: string) => void;

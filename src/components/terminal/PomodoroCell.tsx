@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import type React from "react";
 import { Timer, Play, Pause as PauseIcon, RotateCcw } from "lucide-react";
 import { PaneHeader } from "./PaneHeader";
@@ -105,8 +105,8 @@ export function PomodoroCell({
     setState((s) => ({ ...idleState(workMinutes), cycles: s.cycles }));
   };
 
-  const bodyRef = useRef<HTMLDivElement>(null);
-  const { width, height } = useElementSize(bodyRef);
+  const [bodyEl, setBodyEl] = useState<HTMLDivElement | null>(null);
+  const { width, height } = useElementSize(bodyEl);
   // 0x0 means "not measured yet" — render the full layout, never flash compact.
   const compact = width > 0 && (width < 240 || height < 200);
 
@@ -131,7 +131,7 @@ export function PomodoroCell({
         onHeaderPointerDown={onHeaderPointerDown}
       />
 
-      <div ref={bodyRef} className="flex-1 min-h-0 overflow-hidden">
+      <div ref={setBodyEl} className="flex-1 min-h-0 overflow-hidden">
         {compact ? (
           <div className="h-full flex flex-col justify-center gap-2 px-3">
             <div className="flex items-center gap-2 min-w-0">

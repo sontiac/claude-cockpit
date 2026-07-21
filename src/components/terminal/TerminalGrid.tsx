@@ -1,8 +1,9 @@
-import { useMemo, useRef, useCallback } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { Plus, LayoutGrid, StickyNote, Columns3, FileText, Timer } from "lucide-react";
 import { TerminalCanvas } from "./TerminalCanvas";
 import { ProviderMenu } from "./ProviderMenu";
 import { useCanvasLayout, tileRects } from "../../hooks/useCanvasLayout";
+import { useElementSize } from "../../hooks/useElementSize";
 import { paneCountLabel } from "../../lib/paneCounts";
 import type { CanvasPaneKind, Pane } from "../../types/pane";
 import type { TerminalStatus, Workspace } from "../../types/terminal";
@@ -48,29 +49,29 @@ export function TerminalGrid({
   onMovePane,
 }: TerminalGridProps) {
   const ids = useMemo(() => panes.map((p) => p.id), [panes]);
-  const surfaceRef = useRef<HTMLDivElement>(null);
-  const { layout, setRect, setAll } = useCanvasLayout(ids, () => {
-    const s = surfaceRef.current;
-    return s ? { w: s.clientWidth, h: s.clientHeight } : null;
-  });
+  // The surface element is held in state (not a RefObject) because it
+  // unmounts whenever the canvas empties — useElementSize needs to re-observe
+  // the fresh element when it comes back.
+  const [surfaceEl, setSurfaceEl] = useState<HTMLDivElement | null>(null);
+  const surfaceSize = useElementSize(surfaceEl);
+  const { layout, setRect, setAll } = useCanvasLayout(ids, surfaceSize);
 
   // Tile every window into `cols` columns (0 = auto) filling the visible canvas
   // area. Windows remain freely draggable/resizable after arranging.
   const arrange = useCallback(
     (cols: number) => {
-      const surface = surfaceRef.current;
-      if (!surface) return;
-      const w = surface.clientWidth;
-      const h = surface.clientHeight;
+      if (!surfaceEl) return;
+      const w = surfaceEl.clientWidth;
+      const h = surfaceEl.clientHeight;
       if (w === 0 || h === 0) return;
       setAll(tileRects(ids, cols, w, h));
       // Tiling lays panes out from the surface's top-left (x/y start at MARGIN).
       // If the surface was scrolled — e.g. a pane had been dragged far out —
       // reset scroll to the origin so the arranged panes are actually in view
       // rather than clipped off to the left/top behind the sidebar.
-      surface.scrollTo({ left: 0, top: 0 });
+      surfaceEl.scrollTo({ left: 0, top: 0 });
     },
-    [ids, setAll]
+    [ids, setAll, surfaceEl]
   );
 
   if (panes.length === 0) {
@@ -179,7 +180,7 @@ export function TerminalGrid({
         activeId={activeId}
         layout={layout}
         setRect={setRect}
-        surfaceRef={surfaceRef}
+        surfaceRef={setSurfaceEl}
         onSelect={onSelect}
         onClosePane={onClosePane}
         onRenamePane={onRenamePane}

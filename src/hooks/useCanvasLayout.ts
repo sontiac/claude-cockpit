@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import type { ElementSize } from "./useElementSize";
 
 export interface Rect {
   x: number;
@@ -80,52 +81,55 @@ export function tileRects(
   return rects;
 }
 
+function sameRects(a: Record<string, Rect>, b: Record<string, Rect>): boolean {
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((k) => {
+    const r = a[k];
+    const s = b[k];
+    return s && r.x === s.x && r.y === s.y && r.w === s.w && r.h === s.h;
+  });
+}
+
 /**
  * Manages free-form canvas geometry (position + size) for a set of terminals,
  * keyed by terminal id.
  *
  * While the canvas is *pristine* — the user has never moved, resized, or
- * arranged a pane on it — membership changes re-tile everything into
- * full-height columns fitting the surface (the "fit all" preset). Session
- * restore spawns panes one at a time, so this is what makes a reopened
- * workspace land as tidy columns; it also means panes added to an untouched
- * canvas keep it tiled. After the first manual adjustment, new ids are seeded
- * into a loose grid so a just-spawned terminal lands in a sensible,
- * non-overlapping spot without disturbing the user's layout; ids that
- * disappear are pruned. Geometry lives in memory for the session — terminal
- * ids are regenerated on each app launch, so there is nothing stable to
- * persist against yet (cross-restart layout persistence would need geometry
- * threaded through the workspace snapshot, which is a separate change).
+ * arranged a pane on it — it always shows the "fit all" layout: full-height
+ * columns filling the surface, re-tiled whenever panes come or go AND
+ * whenever the surface resizes. Session restore spawns panes one at a time
+ * into a window that may only get its real size afterwards (saved geometry,
+ * a maximize), so both triggers are needed for a reopened workspace to land
+ * as full-size columns. After the first manual adjustment, the layout is the
+ * user's: new ids are seeded into a loose grid so a just-spawned terminal
+ * lands in a sensible, non-overlapping spot without disturbing anything, and
+ * surface resizes leave geometry alone; ids that disappear are pruned.
+ * Geometry lives in memory for the session — terminal ids are regenerated on
+ * each app launch, so there is nothing stable to persist against yet
+ * (cross-restart layout persistence would need geometry threaded through the
+ * workspace snapshot, which is a separate change).
  */
-export function useCanvasLayout(
-  ids: string[],
-  getSurfaceSize?: () => { w: number; h: number } | null
-) {
+export function useCanvasLayout(ids: string[], surfaceSize: ElementSize) {
   const [layout, setLayout] = useState<Record<string, Rect>>({});
-
-  // Read through a ref so the seeding effect depends only on `ids` — the
-  // getter is a fresh closure every render.
-  const getSurfaceSizeRef = useRef(getSurfaceSize);
-  getSurfaceSizeRef.current = getSurfaceSize;
 
   // True until the user drags, resizes, or arranges — the auto-tiling gate.
   const pristineRef = useRef(true);
 
+  const { width, height } = surfaceSize;
   useEffect(() => {
     setLayout((prev) => {
-      // Only replace state if membership actually changed, so unrelated
-      // re-renders don't churn object identity.
       const sameKeys =
         Object.keys(prev).length === ids.length && ids.every((id) => prev[id]);
-      if (sameKeys) return prev;
 
-      if (pristineRef.current) {
-        const size = getSurfaceSizeRef.current?.() ?? null;
-        if (size && size.w > 0 && size.h > 0) {
-          return tileRects(ids, ids.length, size.w, size.h);
-        }
+      if (pristineRef.current && width > 0 && height > 0) {
+        const next = tileRects(ids, ids.length, width, height);
+        // Keep object identity stable when the tiling comes out unchanged, so
+        // unrelated re-renders don't churn downstream memoization.
+        return sameKeys && sameRects(next, prev) ? prev : next;
       }
 
+      if (sameKeys) return prev;
       const next: Record<string, Rect> = {};
       let seedCount = Object.keys(prev).length;
       for (const id of ids) {
@@ -133,7 +137,7 @@ export function useCanvasLayout(
       }
       return next;
     });
-  }, [ids]);
+  }, [ids, width, height]);
 
   const setRect = useCallback((id: string, rect: Rect) => {
     pristineRef.current = false;
