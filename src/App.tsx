@@ -8,15 +8,17 @@ import { WorkspaceBar } from "./components/layout/WorkspaceBar";
 import { TerminalGrid } from "./components/terminal/TerminalGrid";
 import { RestoreModal } from "./components/terminal/RestoreModal";
 import { AddProjectModal } from "./components/project/AddProjectModal";
+import { ConfirmDialog } from "./components/shared/ConfirmDialog";
 import { useTerminals } from "./hooks/useTerminals";
 import { usePanes } from "./hooks/usePanes";
 import { useProjects } from "./hooks/useProjects";
 import { useFontSizeController, FontSizeContext } from "./hooks/useFontSize";
 import { useNotifications } from "./hooks/useNotifications";
+import { useConfirm } from "./hooks/useConfirm";
 import { useSounds } from "./hooks/useSounds";
 import { setSessionTitle, openWindow, cycleWindow, quitApp } from "./lib/ipc";
 import { sessionIdFromCommand } from "./lib/restore";
-import { closeConfirmMessage } from "./lib/windowClose";
+import { closeWindowConfirm, quitAppConfirm } from "./lib/windowClose";
 import { DEFAULT_COMMAND } from "./lib/constants";
 import { paneCountLabel } from "./lib/paneCounts";
 import { useTheme } from "./hooks/useTheme";
@@ -69,6 +71,7 @@ export function App() {
   } = useProjects();
 
   const { notify } = useNotifications();
+  const { confirm, spec: confirmSpec, respond: respondConfirm } = useConfirm();
   const { play } = useSounds();
   const { fontSize, increase, decrease, reset } = useFontSizeController();
   const { theme, setTheme, themes, uploadBackground, removeBackground } =
@@ -94,14 +97,16 @@ export function App() {
   );
 
   const closePane = useCallback(
-    (id: string) => {
+    async (id: string) => {
       const pane = panes.find((p) => p.id === id);
       if (pane) {
         if (
           pane.kind === "note" &&
-          !window.confirm(
-            `Delete note "${pane.label}"? Its contents will be permanently removed.`
-          )
+          !(await confirm({
+            title: `Delete note "${pane.label}"?`,
+            body: "Its contents will be permanently removed.",
+            confirmLabel: "Delete",
+          }))
         ) {
           return;
         }
@@ -112,7 +117,7 @@ export function App() {
       }
       kill(id);
     },
-    [panes, removePane, kill, activeId, setActiveId, play]
+    [panes, removePane, kill, activeId, setActiveId, play, confirm]
   );
 
   const renamePane = useCallback(
@@ -315,12 +320,16 @@ export function App() {
     }
 
     if (windowCount === 1) {
+      // Quitting keeps the session on disk (recoverable next launch), but it
+      // still kills every running terminal — ask first when any are live.
+      const quitSpec = quitAppConfirm(terminals.length, panes.length);
+      if (quitSpec && !(await confirm(quitSpec))) return;
       await quitApp().catch((e) => console.error("Failed to quit:", e));
       return;
     }
 
-    const confirmMsg = closeConfirmMessage(terminals.length, panes.length);
-    if (confirmMsg && !window.confirm(confirmMsg)) return;
+    const closeSpec = closeWindowConfirm(terminals.length, panes.length);
+    if (closeSpec && !(await confirm(closeSpec))) return;
 
     // Order matters: kill/forget this window's terminals and panes (both disarm
     // their persistence) before closing the window, so nothing re-saves.
@@ -332,7 +341,7 @@ export function App() {
     await getCurrentWindow()
       .close()
       .catch((e) => console.error("Failed to close window:", e));
-  }, [terminals.length, panes.length, forgetWindowTerminals, forgetWindowPanes]);
+  }, [terminals.length, panes.length, forgetWindowTerminals, forgetWindowPanes, confirm]);
 
   const handleDeleteWorkspace = useCallback(
     (id: string) => {
@@ -361,15 +370,15 @@ export function App() {
           onLaunchProject={handleLaunchProject}
           onAddProject={() => setShowAddProject(true)}
           onEditProject={(project) => setEditProject(project)}
-          onDeleteProject={(project) => {
-            if (
-              window.confirm(
-                `Remove "${project.name}" from cockpit? This only removes the project entry — your files and Claude sessions are untouched.`
-              )
-            ) {
-              removeProject(project.id);
-              play("click");
-            }
+          onDeleteProject={async (project) => {
+            const ok = await confirm({
+              title: `Remove "${project.name}" from cockpit?`,
+              body: "This only removes the project entry — your files and Claude sessions are untouched.",
+              confirmLabel: "Remove",
+            });
+            if (!ok) return;
+            removeProject(project.id);
+            play("click");
           }}
           onReorderProjects={reorderProjects}
           onNewTerminal={() => handleNewTerminal()}
@@ -472,6 +481,8 @@ export function App() {
           editProject={editProject}
         />
       )}
+
+      <ConfirmDialog spec={confirmSpec} onRespond={respondConfirm} />
 
       <RestoreModal
         open={restorePrompt !== null}
