@@ -232,6 +232,44 @@ describe("Sidebar project provider launch", () => {
     vi.mocked(getSessions).mockResolvedValue(sessions);
   });
 
+  it("right-click on a session offers Open with…, current provider first", async () => {
+    const onResumeSession = vi.fn();
+    render(
+      <Sidebar
+        projects={[project]}
+        onLaunchProject={vi.fn()}
+        onAddProject={vi.fn()}
+        onEditProject={vi.fn()}
+        onDeleteProject={vi.fn()}
+        onReorderProjects={vi.fn()}
+        onNewTerminal={vi.fn()}
+        onNewNote={vi.fn()}
+        onResumeSession={onResumeSession}
+      />
+    );
+    fireEvent.click(screen.getByText("proj")); // expand sessions
+    await waitFor(() => expect(screen.getByText("Plain chat")).toBeInTheDocument());
+
+    // "Plain chat" has no recorded model → it ran on the default (Claude).
+    fireEvent.contextMenu(screen.getByText("Plain chat"));
+    await waitFor(() =>
+      expect(screen.getByText("Open with Claude (current)")).toBeInTheDocument()
+    );
+    const rows = screen.getAllByText(/^Open with /);
+    expect(rows[0]).toHaveTextContent("Open with Claude (current)");
+
+    // Picking the other provider resumes the same session on it.
+    fireEvent.click(screen.getByText("Open with Kimi"));
+    expect(onResumeSession).toHaveBeenCalledWith(
+      "s-plain",
+      "/tmp/proj",
+      expect.stringContaining("Plain chat"),
+      "kimi"
+    );
+    // The menu closes after picking.
+    expect(screen.queryByText("Open with Kimi")).not.toBeInTheDocument();
+  });
+
   it("plain Play launch passes no provider", () => {
     const onLaunchProject = vi.fn();
     render(

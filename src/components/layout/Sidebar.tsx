@@ -18,6 +18,7 @@ import type { Project } from "../../types/project";
 import { ProviderMenu } from "../terminal/ProviderMenu";
 import { useProviders } from "../../hooks/useProviders";
 import { providerForModel } from "../../lib/providerMatch";
+import { openWithOptions } from "../../lib/sessionOpenWith";
 import type { Session } from "../../types/session";
 import { formatRelativeTime } from "../../lib/constants";
 import { getSessions, setSessionStarred } from "../../lib/ipc";
@@ -62,11 +63,22 @@ function getDisplayTitle(session: Session): string {
   return session.session_id.slice(0, 8);
 }
 
-interface ContextMenuState {
-  project: Project;
-  x: number;
-  y: number;
+/** Terminal label for a resumed session: "<project>: <session title>". */
+function resumeLabel(projectName: string, session: Session): string {
+  return session.custom_title
+    ? `${projectName}: ${session.custom_title}`
+    : `${projectName}: ${getDisplayTitle(session).slice(0, 40)}`;
 }
+
+type ContextMenuState =
+  | { kind: "project"; project: Project; x: number; y: number }
+  | {
+      kind: "session";
+      project: Project;
+      session: Session;
+      x: number;
+      y: number;
+    };
 
 function ProjectSection({
   project,
@@ -75,6 +87,7 @@ function ProjectSection({
   onLaunch,
   onResume,
   onContextMenu,
+  onSessionContextMenu,
   dragHandleProps,
   rowDragProps,
 }: {
@@ -89,6 +102,7 @@ function ProjectSection({
     provider?: string
   ) => void;
   onContextMenu: (e: React.MouseEvent) => void;
+  onSessionContextMenu: (e: React.MouseEvent, session: Session) => void;
   dragHandleProps: React.HTMLAttributes<HTMLButtonElement> & { draggable: boolean };
   rowDragProps: React.HTMLAttributes<HTMLDivElement>;
 }) {
@@ -214,19 +228,19 @@ function ProjectSection({
             </div>
           ) : (
             sessions.map((session) => (
-              <div key={session.session_id} className="relative group/session">
+              <div
+                key={session.session_id}
+                className="relative group/session"
+                onContextMenu={(e) => onSessionContextMenu(e, session)}
+              >
                 <button
                   onClick={() => {
-                    const sessionTitle = getDisplayTitle(session);
-                    const label = session.custom_title
-                      ? `${project.name}: ${session.custom_title}`
-                      : `${project.name}: ${sessionTitle.slice(0, 40)}`;
                     // Resume the chat on the provider it originally ran on
                     // (matched via the transcript's recorded model id).
                     onResume(
                       session.session_id,
                       session.cwd,
-                      label,
+                      resumeLabel(project.name, session),
                       providerForModel(session.model, providers)
                     );
                   }}
@@ -289,6 +303,7 @@ export function Sidebar({
   onResumeSession,
 }: SidebarProps) {
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  const providers = useProviders();
   // Index of the row being dragged and the row currently hovered as a drop
   // target. Both reset to null when a drag ends.
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -358,7 +373,17 @@ export function Sidebar({
             onResume={onResumeSession}
             onContextMenu={(e) => {
               e.preventDefault();
-              setMenu({ project, x: e.clientX, y: e.clientY });
+              setMenu({ kind: "project", project, x: e.clientX, y: e.clientY });
+            }}
+            onSessionContextMenu={(e, session) => {
+              e.preventDefault();
+              setMenu({
+                kind: "session",
+                project,
+                session,
+                x: e.clientX,
+                y: e.clientY,
+              });
             }}
             dragHandleProps={{
               draggable: true,
@@ -407,26 +432,49 @@ export function Sidebar({
           // dismiss handler before the item's own onClick runs.
           onPointerDown={(e) => e.stopPropagation()}
         >
-          <button
-            onClick={() => {
-              onEditProject(menu.project);
-              setMenu(null);
-            }}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-white/5"
-          >
-            <Pencil size={13} />
-            Edit project
-          </button>
-          <button
-            onClick={() => {
-              onDeleteProject(menu.project);
-              setMenu(null);
-            }}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-red-400 hover:bg-red-500/10"
-          >
-            <Trash2 size={13} />
-            Delete project
-          </button>
+          {menu.kind === "project" ? (
+            <>
+              <button
+                onClick={() => {
+                  onEditProject(menu.project);
+                  setMenu(null);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-white/5"
+              >
+                <Pencil size={13} />
+                Edit project
+              </button>
+              <button
+                onClick={() => {
+                  onDeleteProject(menu.project);
+                  setMenu(null);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-red-400 hover:bg-red-500/10"
+              >
+                <Trash2 size={13} />
+                Delete project
+              </button>
+            </>
+          ) : (
+            openWithOptions(menu.session.model, providers).map((opt) => (
+              <button
+                key={opt.providerId}
+                onClick={() => {
+                  onResumeSession(
+                    menu.session.session_id,
+                    menu.session.cwd,
+                    resumeLabel(menu.project.name, menu.session),
+                    opt.providerId
+                  );
+                  setMenu(null);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-white/5"
+              >
+                <Play size={13} />
+                {opt.label}
+              </button>
+            ))
+          )}
         </div>
       )}
     </div>
