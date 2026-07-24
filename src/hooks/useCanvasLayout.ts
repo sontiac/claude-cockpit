@@ -19,6 +19,41 @@ const COLS = 3;
 export const MIN_W = 240;
 export const MIN_H = 140;
 
+/** Which window edge (or corner) a resize gesture grabs. */
+export type ResizeEdge = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+
+/**
+ * The rect that results from dragging `edge` of `orig` by (dx, dy). East/south
+ * edges change only the size; west/north edges move the origin and
+ * counter-adjust the size so the opposite edge stays put. Size is clamped to
+ * MIN_W/MIN_H and the origin never leaves the canvas (x, y >= 0).
+ */
+export function resizeRect(
+  orig: Rect,
+  edge: ResizeEdge,
+  dx: number,
+  dy: number
+): Rect {
+  const next = { ...orig };
+  if (edge.includes("e")) {
+    next.w = Math.max(MIN_W, orig.w + dx);
+  }
+  if (edge.includes("s")) {
+    next.h = Math.max(MIN_H, orig.h + dy);
+  }
+  if (edge.includes("w")) {
+    const shift = Math.max(Math.min(dx, orig.w - MIN_W), -orig.x);
+    next.x = orig.x + shift;
+    next.w = orig.w - shift;
+  }
+  if (edge.includes("n")) {
+    const shift = Math.max(Math.min(dy, orig.h - MIN_H), -orig.y);
+    next.y = orig.y + shift;
+    next.h = orig.h - shift;
+  }
+  return next;
+}
+
 function seedRect(index: number): Rect {
   const col = index % COLS;
   const row = Math.floor(index / COLS);

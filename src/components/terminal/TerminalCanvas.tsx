@@ -4,7 +4,11 @@ import { TerminalCell } from "./TerminalCell";
 import { NoteCell } from "./NoteCell";
 import { MarkdownViewerCell } from "./MarkdownViewerCell";
 import { PomodoroCell } from "./PomodoroCell";
-import { MIN_W, MIN_H, type Rect } from "../../hooks/useCanvasLayout";
+import {
+  resizeRect,
+  type Rect,
+  type ResizeEdge,
+} from "../../hooks/useCanvasLayout";
 import type { Pane } from "../../types/pane";
 import type { TerminalStatus, Workspace } from "../../types/terminal";
 
@@ -35,16 +39,29 @@ const CANVAS_PADDING = 200;
 
 type Gesture = {
   id: string;
-  mode: "move" | "resize";
+  mode: "move" | ResizeEdge;
   startX: number;
   startY: number;
   orig: Rect;
 };
 
+// Hit areas for resizing: thin strips along each edge plus larger corner
+// squares (corners win — they're separate elements rendered after the edges).
+// Edge strips are inset by the corner size so the two never overlap.
+const RESIZE_HANDLES: { edge: ResizeEdge; className: string }[] = [
+  { edge: "n", className: "top-0 left-3 right-3 h-1.5 cursor-ns-resize" },
+  { edge: "s", className: "bottom-0 left-3 right-3 h-1.5 cursor-ns-resize" },
+  { edge: "w", className: "left-0 top-3 bottom-3 w-1.5 cursor-ew-resize" },
+  { edge: "e", className: "right-0 top-3 bottom-3 w-1.5 cursor-ew-resize" },
+  { edge: "nw", className: "top-0 left-0 w-3 h-3 cursor-nwse-resize" },
+  { edge: "ne", className: "top-0 right-0 w-3 h-3 cursor-nesw-resize" },
+  { edge: "sw", className: "bottom-0 left-0 w-3 h-3 cursor-nesw-resize" },
+];
+
 /**
  * Free-form canvas surface: every pane (terminal or note) is an independently
  * positioned, draggable, resizable window. Drag a window by its header, resize
- * from the bottom-right handle. The surface grows past the viewport as windows
+ * from any edge or corner. The surface grows past the viewport as windows
  * are moved outward, so the workspace can keep expanding.
  *
  * Geometry is owned by the parent (TerminalGrid) so its toolbar can re-tile all
@@ -87,7 +104,7 @@ export function TerminalCanvas({
   const startGesture = (
     e: React.PointerEvent,
     id: string,
-    mode: "move" | "resize"
+    mode: "move" | ResizeEdge
   ) => {
     const orig = layout[id];
     if (!orig) return;
@@ -111,11 +128,7 @@ export function TerminalCanvas({
           y: Math.max(0, g.orig.y + dy),
         });
       } else {
-        setRect(g.id, {
-          ...g.orig,
-          w: Math.max(MIN_W, g.orig.w + dx),
-          h: Math.max(MIN_H, g.orig.h + dy),
-        });
+        setRect(g.id, resizeRect(g.orig, g.mode, dx, dy));
       }
     };
     const onUp = () => {
@@ -210,13 +223,30 @@ export function TerminalCanvas({
                   onMove={(wsId) => onMovePane(pane.id, wsId)}
                 />
               )}
-              {/* Resize handle (bottom-right corner). */}
+              {/* Invisible resize hit areas on every edge and corner. */}
+              {RESIZE_HANDLES.map(({ edge, className }) => (
+                <div
+                  key={edge}
+                  data-resize-edge={edge}
+                  onPointerDown={(e) => {
+                    if (e.button !== 0) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onSelect(pane.id);
+                    startGesture(e, pane.id, edge);
+                  }}
+                  className={`absolute z-30 ${className}`}
+                />
+              ))}
+              {/* Bottom-right keeps its visible grip as the affordance. */}
               <div
+                data-resize-edge="se"
                 onPointerDown={(e) => {
+                  if (e.button !== 0) return;
                   e.preventDefault();
                   e.stopPropagation();
                   onSelect(pane.id);
-                  startGesture(e, pane.id, "resize");
+                  startGesture(e, pane.id, "se");
                 }}
                 className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize z-30"
                 title="Drag to resize"

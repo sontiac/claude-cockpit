@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { tileRects, MIN_W, MIN_H, useCanvasLayout } from "./useCanvasLayout";
+import {
+  tileRects,
+  resizeRect,
+  MIN_W,
+  MIN_H,
+  useCanvasLayout,
+} from "./useCanvasLayout";
 
 describe("tileRects columns preset (cols = n)", () => {
   it("lays every pane into a single full-height row", () => {
@@ -147,6 +153,47 @@ describe("pristine-canvas auto-tiling", () => {
     rerender({ ids: ["a", "b", "c"], surface: size });
     rerender({ ids: ["a", "b"], surface: size });
     expect(result.current.layout).toEqual(tileRects(["a", "b"], 2, 1000, 600));
+  });
+
+  it("resizeRect grows/shrinks from each edge and corner", () => {
+    const orig = { x: 100, y: 80, w: 400, h: 300 };
+    // East/south move only the size.
+    expect(resizeRect(orig, "e", 50, 999)).toEqual({ ...orig, w: 450 });
+    expect(resizeRect(orig, "s", 999, 40)).toEqual({ ...orig, h: 340 });
+    // West/north move the origin and counter-adjust the size.
+    expect(resizeRect(orig, "w", -30, 999)).toEqual({ x: 70, y: 80, w: 430, h: 300 });
+    expect(resizeRect(orig, "n", 999, -20)).toEqual({ x: 100, y: 60, w: 400, h: 320 });
+    // Corners combine both axes.
+    expect(resizeRect(orig, "se", 10, 20)).toEqual({ x: 100, y: 80, w: 410, h: 320 });
+    expect(resizeRect(orig, "nw", -10, -20)).toEqual({ x: 90, y: 60, w: 410, h: 320 });
+    expect(resizeRect(orig, "ne", 10, -20)).toEqual({ x: 100, y: 60, w: 410, h: 320 });
+    expect(resizeRect(orig, "sw", -10, 20)).toEqual({ x: 90, y: 80, w: 410, h: 320 });
+  });
+
+  it("resizeRect clamps to the minimum size on every edge", () => {
+    const orig = { x: 100, y: 80, w: 400, h: 300 };
+    expect(resizeRect(orig, "e", -9999, 0).w).toBe(MIN_W);
+    expect(resizeRect(orig, "s", 0, -9999).h).toBe(MIN_H);
+    // Shrinking from the west/north stops the origin once the min is reached.
+    expect(resizeRect(orig, "w", 9999, 0)).toEqual({
+      x: 100 + (400 - MIN_W),
+      y: 80,
+      w: MIN_W,
+      h: 300,
+    });
+    expect(resizeRect(orig, "n", 0, 9999)).toEqual({
+      x: 100,
+      y: 80 + (300 - MIN_H),
+      w: 400,
+      h: MIN_H,
+    });
+  });
+
+  it("resizeRect never drags the origin past the canvas edge", () => {
+    const orig = { x: 30, y: 10, w: 400, h: 300 };
+    // Growing west/north stops at x=0/y=0, transferring only what's available.
+    expect(resizeRect(orig, "w", -100, 0)).toEqual({ x: 0, y: 10, w: 430, h: 300 });
+    expect(resizeRect(orig, "n", 0, -100)).toEqual({ x: 30, y: 0, w: 400, h: 310 });
   });
 
   it("seeds staggered while unmeasured, then tiles on first measurement", () => {
