@@ -281,10 +281,16 @@ fn truncate_str(s: &str, max: usize) -> String {
     // Trim whitespace and take first line only
     let line = s.trim().lines().next().unwrap_or("").trim();
     if line.len() <= max {
-        line.to_string()
-    } else {
-        format!("{}...", &line[..max])
+        return line.to_string();
     }
+    // Cut at the largest char boundary <= max: slicing a String at a raw byte
+    // index panics mid-codepoint, and this text comes straight from user
+    // transcripts (em-dashes, emoji, accents).
+    let mut end = max;
+    while !line.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}...", &line[..end])
 }
 
 /// Simple timestamp parser (handles "2025-01-15T10:30:00.000Z" format)
@@ -308,13 +314,21 @@ fn chrono_parse_timestamp(s: &str) -> Result<f64, ()> {
     let hour: i64 = time_parts[0].parse().map_err(|_| ())?;
     let minute: i64 = time_parts[1].parse().map_err(|_| ())?;
 
+    // Reject out-of-range fields: this data comes from arbitrary transcript
+    // lines, and month feeds an array index below.
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return Err(());
+    }
+
     let sec_str = time_parts[2];
     let sec_parts: Vec<&str> = sec_str.split('.').collect();
     let sec: i64 = sec_parts[0].parse().map_err(|_| ())?;
     let millis: i64 = if sec_parts.len() > 1 {
-        let frac = sec_parts[1];
-        let padded = format!("{:0<3}", &frac[..frac.len().min(3)]);
-        padded.parse().unwrap_or(0)
+        // Take up to 3 chars (not bytes — a raw byte slice panics on
+        // multibyte input) and let parse() reject anything non-numeric.
+        let frac: String = sec_parts[1].chars().take(3).collect();
+        let padded = format!("{frac:0<3}");
+        padded.parse().map_err(|_| ())?
     } else {
         0
     };
@@ -660,6 +674,51 @@ mod tests {
             ]}
         });
         assert_eq!(effort_from_line(&l), Some("max".to_string()));
+    }
+
+    #[test]
+    fn truncate_str_keeps_short_lines_whole() {
+        assert_eq!(truncate_str("  hello world  ", 120), "hello world");
+    }
+
+    #[test]
+    fn truncate_str_never_splits_a_multibyte_char() {
+        // 118 ASCII bytes then an em-dash (3 bytes): byte 120 lands inside the
+        // dash. A naive byte slice panics ("not a char boundary") — this exact
+        // shape crashed the app on a real north-star transcript.
+        let s = format!("{}— tail", "a".repeat(118));
+        let out = truncate_str(&s, 120);
+        assert_eq!(out, format!("{}...", "a".repeat(118)));
+    }
+
+    #[test]
+    fn truncate_str_cuts_at_the_boundary_when_it_aligns() {
+        let s = "b".repeat(121);
+        assert_eq!(truncate_str(&s, 120), format!("{}...", "b".repeat(120)));
+    }
+
+    #[test]
+    fn timestamp_with_garbage_month_is_rejected_not_a_panic() {
+        // Month 99 would index past month_days[12].
+        assert_eq!(chrono_parse_timestamp("2026-99-01T10:00:00.000Z"), Err(()));
+        assert_eq!(chrono_parse_timestamp("2026-00-01T10:00:00.000Z"), Err(()));
+        assert_eq!(chrono_parse_timestamp("2026-07-99T10:00:00.000Z"), Err(()));
+    }
+
+    #[test]
+    fn timestamp_with_multibyte_fraction_is_rejected_not_a_panic() {
+        // A non-ASCII char right after the dot would make the naive byte slice
+        // of the fraction panic.
+        assert_eq!(chrono_parse_timestamp("2026-07-23T10:00:00.é00Z"), Err(()));
+    }
+
+    #[test]
+    fn valid_timestamp_still_parses() {
+        // 2026-07-23T00:00:00.500Z
+        let ms = chrono_parse_timestamp("2026-07-23T00:00:00.500Z").unwrap();
+        assert_eq!(ms % 1000.0, 500.0);
+        // Round-trip sanity: days since epoch for 2026-07-23 is 20657.
+        assert_eq!(((ms - 500.0) / 1000.0) as i64, 20657 * 86400);
     }
 
     #[test]
