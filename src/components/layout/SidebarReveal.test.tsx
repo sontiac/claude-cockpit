@@ -67,4 +67,51 @@ describe("SidebarReveal", () => {
     act(() => vi.advanceTimersByTime(500));
     expect(flyout.className).toContain("-translate-x-full");
   });
+
+  it("cancels pending close and clears state when pinned while overlay is open", () => {
+    const { rerender } = render(
+      <SidebarReveal pinned={false}>
+        <div>sidebar content</div>
+      </SidebarReveal>
+    );
+
+    // Open the overlay and schedule a pending close.
+    fireEvent.mouseEnter(screen.getByTestId("sidebar-hot-strip"), { buttons: 0 });
+    fireEvent.mouseLeave(screen.getByTestId("sidebar-flyout"));
+
+    // Verify the overlay is still open before delay elapses.
+    act(() => vi.advanceTimersByTime(200));
+    expect(screen.getByTestId("sidebar-flyout").className).toContain(
+      "translate-x-0"
+    );
+
+    // Toggle to pinned: overlay should disappear entirely, no hot strip, no timer leak.
+    rerender(
+      <SidebarReveal pinned={true}>
+        <div>sidebar content</div>
+      </SidebarReveal>
+    );
+    expect(screen.getByText("sidebar content")).toBeInTheDocument();
+    expect(screen.queryByTestId("sidebar-hot-strip")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("sidebar-flyout")).not.toBeInTheDocument();
+
+    // Advance time further to verify no pending timer fires or causes warnings.
+    act(() => vi.advanceTimersByTime(500));
+
+    // Toggle back to unpinned: should render fresh (closed state), not stale-open.
+    rerender(
+      <SidebarReveal pinned={false}>
+        <div>sidebar content</div>
+      </SidebarReveal>
+    );
+    expect(screen.getByTestId("sidebar-flyout").className).toContain(
+      "-translate-x-full"
+    );
+
+    // Advancing timers after re-enable should not cause state changes.
+    act(() => vi.advanceTimersByTime(500));
+    expect(screen.getByTestId("sidebar-flyout").className).toContain(
+      "-translate-x-full"
+    );
+  });
 });
