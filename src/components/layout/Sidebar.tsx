@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import type React from "react";
 import {
   Plus,
@@ -452,61 +453,68 @@ export function Sidebar({
         </button>
       </div>
 
-      {/* Right-click context menu */}
-      {menu && (
-        <div
-          ref={menuRef}
-          className="fixed z-50 min-w-[10rem] glass-card py-1 text-sm shadow-xl"
-          style={{ top: menu.y, left: menu.x }}
-          // Keep clicks inside the menu from bubbling to the window-level
-          // dismiss handler before the item's own onClick runs.
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          {menu.kind === "project" ? (
-            <>
-              <button
-                onClick={() => {
-                  onEditProject(menu.project);
-                  setMenu(null);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-white/5"
-              >
-                <Pencil size={13} />
-                Edit project
-              </button>
-              <button
-                onClick={() => {
-                  onDeleteProject(menu.project);
-                  setMenu(null);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-red-400 hover:bg-red-500/10"
-              >
-                <Trash2 size={13} />
-                Delete project
-              </button>
-            </>
-          ) : (
-            openWithOptions(menu.session.model, providers).map((opt) => (
-              <button
-                key={opt.providerId}
-                onClick={() => {
-                  onResumeSession(
-                    menu.session.session_id,
-                    menu.session.cwd,
-                    resumeLabel(menu.project.name, menu.session),
-                    opt.providerId
-                  );
-                  setMenu(null);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-white/5"
-              >
-                <Play size={13} />
-                {opt.label}
-              </button>
-            ))
-          )}
-        </div>
-      )}
+      {/* Right-click context menu. Portaled to document.body (matching
+          ProviderMenu / MoveToWorkspaceMenu) so its `fixed` positioning is
+          always viewport-relative — nested here, it would instead be pinned
+          to SidebarReveal's flyout wrapper, which carries a translate
+          transform (and therefore becomes the containing block for `fixed`
+          descendants) whenever the sidebar is unpinned. */}
+      {menu &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="fixed z-50 min-w-[10rem] glass-card py-1 text-sm shadow-xl"
+            style={{ top: menu.y, left: menu.x }}
+            // Keep clicks inside the menu from bubbling to the window-level
+            // dismiss handler before the item's own onClick runs.
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            {menu.kind === "project" ? (
+              <>
+                <button
+                  onClick={() => {
+                    onEditProject(menu.project);
+                    setMenu(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-white/5"
+                >
+                  <Pencil size={13} />
+                  Edit project
+                </button>
+                <button
+                  onClick={() => {
+                    onDeleteProject(menu.project);
+                    setMenu(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-red-400 hover:bg-red-500/10"
+                >
+                  <Trash2 size={13} />
+                  Delete project
+                </button>
+              </>
+            ) : (
+              openWithOptions(menu.session.model, providers).map((opt) => (
+                <button
+                  key={opt.providerId}
+                  onClick={() => {
+                    onResumeSession(
+                      menu.session.session_id,
+                      menu.session.cwd,
+                      resumeLabel(menu.project.name, menu.session),
+                      opt.providerId
+                    );
+                    setMenu(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-white/5"
+                >
+                  <Play size={13} />
+                  {opt.label}
+                </button>
+              ))
+            )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

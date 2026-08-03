@@ -259,3 +259,27 @@ describe("Sidebar", () => {
     expect(onTogglePin).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("Sidebar context menu portal", () => {
+  // The menu is portaled to document.body (rather than rendered inline)
+  // because it sits inside SidebarReveal's flyout wrapper, which carries a
+  // translate transform whenever the sidebar is unpinned — a transformed
+  // ancestor becomes the containing block for `position: fixed` descendants,
+  // which would otherwise mis-position this `fixed` menu relative to the
+  // flyout instead of the viewport.
+  it("renders the project context menu as a direct child of document.body", () => {
+    renderSidebar();
+    fireEvent.contextMenu(screen.getByText("proj"));
+    const menuEl = screen.getByText("Edit project").closest(".glass-card");
+    expect(menuEl).not.toBeNull();
+    expect(menuEl?.parentElement).toBe(document.body);
+  });
+
+  it("still dismisses on an outside pointerdown once portaled", () => {
+    renderSidebar();
+    fireEvent.contextMenu(screen.getByText("proj"));
+    expect(screen.getByText("Edit project")).toBeInTheDocument();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByText("Edit project")).not.toBeInTheDocument();
+  });
+});
