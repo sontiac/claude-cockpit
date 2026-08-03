@@ -62,3 +62,55 @@ describe("TopBar", () => {
     expect(props.onCloseWindow).toHaveBeenCalled();
   });
 });
+
+describe("TopBar reordering", () => {
+  const threeWorkspaces = [
+    { id: "w1", name: "One" },
+    { id: "w2", name: "Two" },
+    { id: "w3", name: "Three" },
+  ];
+
+  // Requires dragDropEnabled=false in tauri.conf.json (and
+  // disable_drag_drop_handler in open_window) — with Tauri's native handler
+  // on, DOM drop events never fire on macOS.
+  it("reorders workspaces when a tab is dragged onto another", () => {
+    const props = renderTopBar({ workspaces: threeWorkspaces, counts: {} });
+    const dt = { effectAllowed: "", dropEffect: "", setData: vi.fn() };
+    fireEvent.dragStart(screen.getByText("One"), { dataTransfer: dt });
+    expect(dt.setData).toHaveBeenCalledWith("text/plain", "w1");
+    fireEvent.dragOver(screen.getByText("Three"), { dataTransfer: dt });
+    fireEvent.drop(screen.getByText("Three"), { dataTransfer: dt });
+    expect(props.onReorder).toHaveBeenCalledWith(["w2", "w3", "w1"]);
+  });
+
+  it("dropping a tab on itself does not reorder", () => {
+    const props = renderTopBar({ workspaces: threeWorkspaces, counts: {} });
+    const dt = { effectAllowed: "", dropEffect: "", setData: vi.fn() };
+    fireEvent.dragStart(screen.getByText("Two"), { dataTransfer: dt });
+    fireEvent.drop(screen.getByText("Two"), { dataTransfer: dt });
+    expect(props.onReorder).not.toHaveBeenCalled();
+  });
+
+  it("a tab being renamed is not draggable", () => {
+    renderTopBar();
+    const tab = screen.getByText("Workspace 2").closest("[draggable]")!;
+    expect(tab).toHaveAttribute("draggable", "true");
+    fireEvent.doubleClick(screen.getByText("Workspace 2"));
+    // The name is now an input; the tab root must opt out of dragging so text
+    // selection inside the input can't start a tab drag.
+    expect(
+      screen.getByDisplayValue("Workspace 2").closest("[draggable]")
+    ).toHaveAttribute("draggable", "false");
+  });
+});
+
+describe("TopBar renaming", () => {
+  it("commits a rename on Enter", () => {
+    const props = renderTopBar();
+    fireEvent.doubleClick(screen.getByText("Workspace 2"));
+    const input = screen.getByDisplayValue("Workspace 2");
+    fireEvent.change(input, { target: { value: "Focus" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(props.onRename).toHaveBeenCalledWith("w2", "Focus");
+  });
+});
