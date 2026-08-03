@@ -113,4 +113,15 @@ describe("TopBar renaming", () => {
     fireEvent.keyDown(input, { key: "Enter" });
     expect(props.onRename).toHaveBeenCalledWith("w2", "Focus");
   });
+
+  it("discards the edit on Escape without renaming", () => {
+    const props = renderTopBar();
+    fireEvent.doubleClick(screen.getByText("Workspace 2"));
+    const input = screen.getByDisplayValue("Workspace 2");
+    fireEvent.change(input, { target: { value: "Focus" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(props.onRename).not.toHaveBeenCalled();
+    expect(screen.queryByDisplayValue("Focus")).not.toBeInTheDocument();
+    expect(screen.getByText("Workspace 2")).toBeInTheDocument();
+  });
 });

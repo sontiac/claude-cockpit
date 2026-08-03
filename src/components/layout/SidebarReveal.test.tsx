@@ -1,6 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
-import { SidebarReveal } from "./SidebarReveal";
+import { SidebarReveal, useSidebarRevealHold } from "./SidebarReveal";
+
+/** Stand-in for a portaled popover (context menu, ProviderMenu): it isn't a DOM
+ *  descendant of the flyout, so it holds the flyout open via context instead of
+ *  relying on flyout mouseEnter/mouseLeave. */
+function HoldControls() {
+  const { hold, release } = useSidebarRevealHold();
+  return (
+    <>
+      <button onClick={hold}>hold</button>
+      <button onClick={release}>release</button>
+    </>
+  );
+}
 
 describe("SidebarReveal", () => {
   beforeEach(() => vi.useFakeTimers());
@@ -113,5 +126,31 @@ describe("SidebarReveal", () => {
     expect(screen.getByTestId("sidebar-flyout").className).toContain(
       "-translate-x-full"
     );
+  });
+
+  it("holding the flyout open blocks a pending close, and release re-schedules it", () => {
+    render(
+      <SidebarReveal pinned={false}>
+        <div>sidebar content</div>
+        <HoldControls />
+      </SidebarReveal>
+    );
+    const flyout = screen.getByTestId("sidebar-flyout");
+
+    fireEvent.mouseEnter(screen.getByTestId("sidebar-hot-strip"), { buttons: 0 });
+    fireEvent.mouseLeave(flyout);
+
+    // A popover (portaled outside the flyout) claims a hold before the close
+    // delay elapses.
+    fireEvent.click(screen.getByText("hold"));
+    act(() => vi.advanceTimersByTime(1000));
+    expect(flyout.className).toContain("translate-x-0");
+
+    // Releasing the hold re-schedules the close; it fires after the full delay.
+    fireEvent.click(screen.getByText("release"));
+    act(() => vi.advanceTimersByTime(200));
+    expect(flyout.className).toContain("translate-x-0");
+    act(() => vi.advanceTimersByTime(200));
+    expect(flyout.className).toContain("-translate-x-full");
   });
 });

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { Sidebar } from "./Sidebar";
+import { SidebarReveal } from "./SidebarReveal";
 import type { Session } from "../../types/session";
 import type { Project } from "../../types/project";
 
@@ -57,8 +58,10 @@ const project: Project = {
   command: null,
 };
 
-function renderSidebar(overrides: Partial<Parameters<typeof Sidebar>[0]> = {}) {
-  const props: Parameters<typeof Sidebar>[0] = {
+function buildSidebarProps(
+  overrides: Partial<Parameters<typeof Sidebar>[0]> = {}
+): Parameters<typeof Sidebar>[0] {
+  return {
     projects: [project],
     terminalCounts: new Map<string, number>(),
     pinned: false,
@@ -73,7 +76,10 @@ function renderSidebar(overrides: Partial<Parameters<typeof Sidebar>[0]> = {}) {
     onResumeSession: vi.fn(),
     ...overrides,
   };
-  return render(<Sidebar {...props} />);
+}
+
+function renderSidebar(overrides: Partial<Parameters<typeof Sidebar>[0]> = {}) {
+  return render(<Sidebar {...buildSidebarProps(overrides)} />);
 }
 
 beforeEach(() => {
@@ -281,5 +287,43 @@ describe("Sidebar context menu portal", () => {
     expect(screen.getByText("Edit project")).toBeInTheDocument();
     fireEvent.pointerDown(document.body);
     expect(screen.queryByText("Edit project")).not.toBeInTheDocument();
+  });
+});
+
+describe("Sidebar inside an unpinned SidebarReveal", () => {
+  // The context menu portals to document.body, outside the flyout's DOM
+  // subtree, so moving the pointer onto it fires the flyout's mouseLeave.
+  // Without a hold, the flyout would slide shut underneath its own open menu.
+  it("keeps the flyout open while the context menu is up, and closes once it's dismissed", () => {
+    vi.useFakeTimers();
+    try {
+      render(
+        <SidebarReveal pinned={false}>
+          <Sidebar {...buildSidebarProps()} />
+        </SidebarReveal>
+      );
+      const flyout = screen.getByTestId("sidebar-flyout");
+
+      fireEvent.mouseEnter(screen.getByTestId("sidebar-hot-strip"), {
+        buttons: 0,
+      });
+      expect(flyout.className).toContain("translate-x-0");
+
+      fireEvent.contextMenu(screen.getByText("proj"));
+      fireEvent.mouseLeave(flyout);
+      expect(screen.getByText("Edit project")).toBeInTheDocument();
+
+      // Past the close delay, the held flyout must still be open.
+      act(() => vi.advanceTimersByTime(500));
+      expect(flyout.className).toContain("translate-x-0");
+
+      // Dismiss the menu; the flyout closes after the delay elapses again.
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(screen.queryByText("Edit project")).not.toBeInTheDocument();
+      act(() => vi.advanceTimersByTime(300));
+      expect(flyout.className).toContain("-translate-x-full");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 
 interface SidebarRevealProps {
@@ -11,6 +19,31 @@ interface SidebarRevealProps {
  *  (e.g. overshooting a button) don't flicker it closed. */
 const CLOSE_DELAY_MS = 300;
 
+interface SidebarRevealHold {
+  /** Increment the hold count; call once per reason the flyout must stay open. */
+  hold: () => void;
+  /** Decrement the hold count; must be paired 1:1 with a prior hold(). */
+  release: () => void;
+}
+
+const noopHold: SidebarRevealHold = { hold: () => {}, release: () => {} };
+
+/**
+ * Lets something rendered inside the sidebar but portaled to document.body — the
+ * right-click context menu, a ProviderMenu popover — keep the unpinned flyout
+ * open for as long as it's up. A portaled element isn't a DOM descendant of the
+ * flyout, so the pointer moving onto it still fires the flyout's mouseLeave,
+ * which would otherwise close the sidebar underneath its own open popover.
+ * Ref-counted because more than one such popover can be open at once. Defaults
+ * to a no-op so consumers rendered outside a SidebarReveal (e.g. ProviderMenu in
+ * the terminal toolbar) are unaffected.
+ */
+const SidebarRevealHoldContext = createContext<SidebarRevealHold>(noopHold);
+
+export function useSidebarRevealHold(): SidebarRevealHold {
+  return useContext(SidebarRevealHoldContext);
+}
+
 /**
  * Renders the sidebar docked when pinned. When unpinned, the sidebar hides
  * entirely; a thin hot strip on the left edge slides it in as an overlay above
@@ -22,31 +55,55 @@ export function SidebarReveal({ pinned, children }: SidebarRevealProps) {
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined
   );
+  const holdCount = useRef(0);
 
-  const cancelClose = () => {
+  const cancelClose = useCallback(() => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
     closeTimer.current = undefined;
-  };
+  }, []);
 
-  // Pinning while the overlay is open must not leave a stale timer or state.
+  const scheduleClose = useCallback(() => {
+    cancelClose();
+    closeTimer.current = setTimeout(() => {
+      // A held popover is portaled outside the flyout's DOM subtree, so the
+      // pointer moving onto it already fired this close via mouseLeave. Skip
+      // it here; release() re-schedules once the last hold is gone.
+      if (holdCount.current === 0) setOpen(false);
+    }, CLOSE_DELAY_MS);
+  }, [cancelClose]);
+
+  const hold = useCallback(() => {
+    holdCount.current += 1;
+  }, []);
+  const release = useCallback(() => {
+    holdCount.current = Math.max(0, holdCount.current - 1);
+    if (holdCount.current === 0) scheduleClose();
+  }, [scheduleClose]);
+  const holdContextValue = useMemo(() => ({ hold, release }), [hold, release]);
+
+  // Pinning while the overlay is open must not leave a stale timer, state, or
+  // hold count.
   useEffect(() => {
     if (pinned) {
       cancelClose();
       setOpen(false);
+      holdCount.current = 0;
     }
-  }, [pinned]);
+  }, [pinned, cancelClose]);
 
-  useEffect(() => cancelClose, []);
+  useEffect(() => cancelClose, [cancelClose]);
 
-  if (pinned) return <>{children}</>;
-
-  const scheduleClose = () => {
-    cancelClose();
-    closeTimer.current = setTimeout(() => setOpen(false), CLOSE_DELAY_MS);
-  };
+  if (pinned) {
+    // No close behavior to hold open in docked mode.
+    return (
+      <SidebarRevealHoldContext.Provider value={noopHold}>
+        {children}
+      </SidebarRevealHoldContext.Provider>
+    );
+  }
 
   return (
-    <>
+    <SidebarRevealHoldContext.Provider value={holdContextValue}>
       {/* Hot strip. `buttons === 0` keeps it inert while any mouse button is
           held, so dragging a pane toward the left edge never pops the overlay. */}
       <div
@@ -69,6 +126,6 @@ export function SidebarReveal({ pinned, children }: SidebarRevealProps) {
       >
         {children}
       </div>
-    </>
+    </SidebarRevealHoldContext.Provider>
   );
 }

@@ -2,6 +2,7 @@ import { useRef, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
 import { useProviders } from "../../hooks/useProviders";
+import { useSidebarRevealHold } from "../layout/SidebarReveal";
 
 interface ProviderMenuProps {
   /** Spawn a new terminal on the picked provider profile id. */
@@ -74,6 +75,18 @@ export function ProviderMenu({
       document.removeEventListener("scroll", close, true);
     };
   }, [open]);
+
+  // Used inside the Sidebar (ProjectSection), this popover is portaled to
+  // document.body outside the unpinned flyout's DOM subtree, so the pointer
+  // moving onto it already fired the flyout's mouseLeave. Hold the flyout open
+  // for as long as this popover is up; a no-op elsewhere (e.g. the terminal
+  // toolbar's "new terminal" trigger).
+  const { hold, release } = useSidebarRevealHold();
+  useEffect(() => {
+    if (!open) return;
+    hold();
+    return release;
+  }, [open, hold, release]);
 
   if (providers.length < 2) return null;
 

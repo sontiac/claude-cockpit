@@ -25,6 +25,7 @@ import { openWithOptions } from "../../lib/sessionOpenWith";
 import type { Session } from "../../types/session";
 import { formatRelativeTime } from "../../lib/constants";
 import { getSessions, setSessionStarred } from "../../lib/ipc";
+import { useSidebarRevealHold } from "./SidebarReveal";
 
 interface SidebarProps {
   projects: Project[];
@@ -347,6 +348,18 @@ export function Sidebar({
       window.removeEventListener("resize", close);
     };
   }, [menu]);
+
+  // The menu is portaled to document.body, outside the unpinned flyout's DOM
+  // subtree, so moving the pointer onto it already fired the flyout's
+  // mouseLeave. Hold the flyout open for as long as the menu is up so it
+  // doesn't close underneath its own open menu.
+  const isMenuOpen = menu !== null;
+  const { hold, release } = useSidebarRevealHold();
+  useEffect(() => {
+    if (!isMenuOpen) return;
+    hold();
+    return release;
+  }, [isMenuOpen, hold, release]);
 
   const handleDrop = useCallback(
     (toIndex: number) => {
