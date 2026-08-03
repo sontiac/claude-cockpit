@@ -7,3 +7,5 @@ src-tauri/gen/
 .claude/.gate-state
 .claude/.gate-attempts
 tmp/
+.claude/worktrees/
+.superpowers/
