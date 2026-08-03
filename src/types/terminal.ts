@@ -49,4 +49,6 @@ export interface WindowState {
   terminals: PersistedTerminal[];
   active_workspace_id: string | null;
   geometry: Geometry | null;
+  /** Sidebar docked (pinned) vs hidden-with-edge-hover. Default false. */
+  sidebar_pinned: boolean;
 }

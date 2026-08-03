@@ -53,6 +53,10 @@ pub struct WindowState {
     pub active_workspace_id: Option<String>,
     #[serde(default)]
     pub geometry: Option<Geometry>,
+    /// Whether the sidebar is pinned (docked). Unpinned sidebars hide and
+    /// reveal on left-edge hover. Defaults to false (hidden).
+    #[serde(default)]
+    pub sidebar_pinned: bool,
 }
 
 fn base_dir() -> PathBuf {
@@ -239,4 +243,29 @@ pub fn set_session_starred(
     sorted.sort();
     fs::write(session_stars_file(), serde_json::to_string_pretty(&sorted)?)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Old on-disk snapshots predate the field; they must load as unpinned
+    /// (hidden), the spec'd default.
+    #[test]
+    fn window_state_without_sidebar_pinned_defaults_to_false() {
+        let json = r#"{"workspaces":[],"terminals":[],"active_workspace_id":null,"geometry":null}"#;
+        let state: WindowState = serde_json::from_str(json).unwrap();
+        assert!(!state.sidebar_pinned);
+    }
+
+    #[test]
+    fn window_state_round_trips_sidebar_pinned() {
+        let state = WindowState {
+            sidebar_pinned: true,
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&state).unwrap();
+        let back: WindowState = serde_json::from_str(&json).unwrap();
+        assert!(back.sidebar_pinned);
+    }
 }

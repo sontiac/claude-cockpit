@@ -77,6 +77,9 @@ export function useTerminals() {
     () => workspaces[0].id
   );
 
+  // Sidebar docked (pinned) vs hidden-with-edge-hover. Persisted per window.
+  const [sidebarPinned, setSidebarPinned] = useState(false);
+
   // Persistence stays disarmed until the restore decision is made (main window)
   // or the initial state has loaded (secondary windows), so the empty initial
   // state can't overwrite the saved session.
@@ -244,6 +247,10 @@ export function useTerminals() {
     });
   }, []);
 
+  const toggleSidebarPinned = useCallback(() => {
+    setSidebarPinned((p) => !p);
+  }, []);
+
   // Spawn a set of persisted terminals back into their workspaces.
   const restoreTerminals = useCallback(
     async (items: PersistedTerminal[], fallbackWs: string) => {
@@ -303,6 +310,7 @@ export function useTerminals() {
           ? state.active_workspace_id
           : loadedWs[0].id;
       setActiveWorkspaceId(active);
+      setSidebarPinned(state.sidebar_pinned);
 
       const myTerminals = state.terminals.map((t) => ({
         ...t,
@@ -385,6 +393,7 @@ export function useTerminals() {
     setWorkspaces([ws]);
     setActiveWorkspaceId(ws.id);
     setActiveId(null);
+    setSidebarPinned(false);
     setPersistArmed(true);
   }, []);
 
@@ -418,12 +427,20 @@ export function useTerminals() {
         terminals: terminals.map(toPersisted),
         active_workspace_id: activeWorkspaceId,
         geometry,
+        sidebar_pinned: sidebarPinned,
       }).catch((error) => console.error("Failed to persist window:", error));
     });
     return () => {
       cancelled = true;
     };
-  }, [terminals, workspaces, activeWorkspaceId, persistArmed, geometryVersion]);
+  }, [
+    terminals,
+    workspaces,
+    activeWorkspaceId,
+    persistArmed,
+    geometryVersion,
+    sidebarPinned,
+  ]);
 
   // Re-persist geometry when the window is moved or resized (debounced).
   useEffect(() => {
@@ -468,5 +485,7 @@ export function useTerminals() {
     renameWorkspace,
     deleteWorkspace,
     reorderWorkspaces,
+    sidebarPinned,
+    toggleSidebarPinned,
   };
 }
