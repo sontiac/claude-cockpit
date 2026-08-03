@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { Sidebar } from "./Sidebar";
 import type { Session } from "../../types/session";
+import type { Project } from "../../types/project";
 
 const sessions: Session[] = [
   {
@@ -47,7 +48,7 @@ vi.mock("../../lib/ipc", () => ({
 
 import { getSessions, setSessionStarred } from "../../lib/ipc";
 
-const project = {
+const project: Project = {
   id: "p1",
   name: "proj",
   path: "/tmp/proj",
@@ -56,20 +57,23 @@ const project = {
   command: null,
 };
 
-function renderSidebar() {
-  return render(
-    <Sidebar
-      projects={[project]}
-      onLaunchProject={vi.fn()}
-      onAddProject={vi.fn()}
-      onEditProject={vi.fn()}
-      onDeleteProject={vi.fn()}
-      onReorderProjects={vi.fn()}
-      onNewTerminal={vi.fn()}
-      onNewNote={vi.fn()}
-      onResumeSession={vi.fn()}
-    />
-  );
+function renderSidebar(overrides: Partial<Parameters<typeof Sidebar>[0]> = {}) {
+  const props: Parameters<typeof Sidebar>[0] = {
+    projects: [project],
+    terminalCounts: new Map<string, number>(),
+    pinned: false,
+    onTogglePin: vi.fn(),
+    onLaunchProject: vi.fn(),
+    onAddProject: vi.fn(),
+    onEditProject: vi.fn(),
+    onDeleteProject: vi.fn(),
+    onReorderProjects: vi.fn(),
+    onNewTerminal: vi.fn(),
+    onNewNote: vi.fn(),
+    onResumeSession: vi.fn(),
+    ...overrides,
+  };
+  return render(<Sidebar {...props} />);
 }
 
 beforeEach(() => {
@@ -148,19 +152,7 @@ describe("Sidebar project reordering", () => {
       { ...project, id: "p3", name: "gamma" },
     ];
     const onReorderProjects = vi.fn();
-    render(
-      <Sidebar
-        projects={projects}
-        onLaunchProject={vi.fn()}
-        onAddProject={vi.fn()}
-        onEditProject={vi.fn()}
-        onDeleteProject={vi.fn()}
-        onReorderProjects={onReorderProjects}
-        onNewTerminal={vi.fn()}
-        onNewNote={vi.fn()}
-        onResumeSession={vi.fn()}
-      />
-    );
+    renderSidebar({ projects, onReorderProjects });
     const dt = { effectAllowed: "", dropEffect: "", setData: vi.fn() };
     const handles = screen.getAllByTitle("Drag to reorder");
     fireEvent.dragStart(handles[0], { dataTransfer: dt });
@@ -176,19 +168,7 @@ describe("Sidebar project reordering", () => {
 describe("Sidebar project provider launch", () => {
   it("launches a project on a picked provider", async () => {
     const onLaunchProject = vi.fn();
-    render(
-      <Sidebar
-        projects={[project]}
-        onLaunchProject={onLaunchProject}
-        onAddProject={vi.fn()}
-        onEditProject={vi.fn()}
-        onDeleteProject={vi.fn()}
-        onReorderProjects={vi.fn()}
-        onNewTerminal={vi.fn()}
-        onNewNote={vi.fn()}
-        onResumeSession={vi.fn()}
-      />
-    );
+    renderSidebar({ onLaunchProject });
     // The chevron appears once the (async) provider list arrives.
     await waitFor(() =>
       expect(screen.getByTitle("Launch with provider…")).toBeInTheDocument()
@@ -207,19 +187,7 @@ describe("Sidebar project provider launch", () => {
       model: "k3",
     };
     vi.mocked(getSessions).mockResolvedValue([kimiSession]);
-    render(
-      <Sidebar
-        projects={[project]}
-        onLaunchProject={vi.fn()}
-        onAddProject={vi.fn()}
-        onEditProject={vi.fn()}
-        onDeleteProject={vi.fn()}
-        onReorderProjects={vi.fn()}
-        onNewTerminal={vi.fn()}
-        onNewNote={vi.fn()}
-        onResumeSession={onResumeSession}
-      />
-    );
+    renderSidebar({ onResumeSession });
     fireEvent.click(screen.getByText("proj")); // expand sessions
     await waitFor(() => expect(screen.getByText("Kimi chat")).toBeInTheDocument());
     fireEvent.click(screen.getByText("Kimi chat"));
@@ -234,19 +202,7 @@ describe("Sidebar project provider launch", () => {
 
   it("right-click on a session offers Open with…, current provider first", async () => {
     const onResumeSession = vi.fn();
-    render(
-      <Sidebar
-        projects={[project]}
-        onLaunchProject={vi.fn()}
-        onAddProject={vi.fn()}
-        onEditProject={vi.fn()}
-        onDeleteProject={vi.fn()}
-        onReorderProjects={vi.fn()}
-        onNewTerminal={vi.fn()}
-        onNewNote={vi.fn()}
-        onResumeSession={onResumeSession}
-      />
-    );
+    renderSidebar({ onResumeSession });
     fireEvent.click(screen.getByText("proj")); // expand sessions
     await waitFor(() => expect(screen.getByText("Plain chat")).toBeInTheDocument());
 
@@ -272,20 +228,34 @@ describe("Sidebar project provider launch", () => {
 
   it("plain Play launch passes no provider", () => {
     const onLaunchProject = vi.fn();
-    render(
-      <Sidebar
-        projects={[project]}
-        onLaunchProject={onLaunchProject}
-        onAddProject={vi.fn()}
-        onEditProject={vi.fn()}
-        onDeleteProject={vi.fn()}
-        onReorderProjects={vi.fn()}
-        onNewTerminal={vi.fn()}
-        onNewNote={vi.fn()}
-        onResumeSession={vi.fn()}
-      />
-    );
+    renderSidebar({ onLaunchProject });
     fireEvent.click(screen.getByTitle("Launch 1 terminal"));
     expect(onLaunchProject).toHaveBeenCalledWith(project, undefined);
+  });
+});
+
+describe("Sidebar", () => {
+  it("shows the live terminal count next to the project name", () => {
+    renderSidebar({ terminalCounts: new Map([["p1", 3]]) });
+    expect(screen.getByText("(3)")).toBeInTheDocument();
+  });
+
+  it("omits the count entirely when zero", () => {
+    renderSidebar();
+    expect(screen.queryByText(/\(\d+\)/)).not.toBeInTheDocument();
+  });
+
+  it("exposes the full project name as a native tooltip", () => {
+    renderSidebar({
+      projects: [{ ...project, name: "My Very Long Project Name" }],
+    });
+    expect(screen.getByTitle("My Very Long Project Name")).toBeInTheDocument();
+  });
+
+  it("fires onTogglePin from the pin button", () => {
+    const onTogglePin = vi.fn();
+    renderSidebar({ onTogglePin });
+    fireEvent.click(screen.getByTitle(/pin sidebar/i));
+    expect(onTogglePin).toHaveBeenCalledTimes(1);
   });
 });

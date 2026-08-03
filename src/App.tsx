@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { getCurrentWindow, getAllWindows } from "@tauri-apps/api/window";
 import { TitleBar } from "./components/layout/TitleBar";
 import { Sidebar } from "./components/layout/Sidebar";
+import { SidebarReveal } from "./components/layout/SidebarReveal";
 import { StatusBar } from "./components/layout/StatusBar";
 import { WorkspaceBar } from "./components/layout/WorkspaceBar";
 import { TerminalGrid } from "./components/terminal/TerminalGrid";
@@ -21,6 +22,7 @@ import { sessionIdFromCommand } from "./lib/restore";
 import { closeWindowConfirm, quitAppConfirm } from "./lib/windowClose";
 import { DEFAULT_COMMAND } from "./lib/constants";
 import { paneCountLabel } from "./lib/paneCounts";
+import { countTerminalsByProject } from "./lib/projectCounts";
 import { useTheme } from "./hooks/useTheme";
 import type { Project } from "./types/project";
 import type { TerminalStatus } from "./types/terminal";
@@ -47,6 +49,8 @@ export function App() {
     renameWorkspace,
     deleteWorkspace,
     reorderWorkspaces,
+    sidebarPinned,
+    toggleSidebarPinned,
   } = useTerminals();
 
   const {
@@ -180,6 +184,9 @@ export function App() {
         } else if (e.key === "0") {
           e.preventDefault();
           reset();
+        } else if (e.key === "b") {
+          e.preventDefault();
+          toggleSidebarPinned();
         }
       }
     };
@@ -197,6 +204,7 @@ export function App() {
     handleNewTerminal,
     handleNewPane,
     closePane,
+    toggleSidebarPinned,
   ]);
 
   // Live terminal count per workspace, for the workspace tabs.
@@ -207,6 +215,12 @@ export function App() {
     }
     return counts;
   }, [terminals]);
+
+  // Live terminal count per project (this window only), for the sidebar rows.
+  const projectTerminalCounts = useMemo(
+    () => countTerminalsByProject(terminals),
+    [terminals]
+  );
 
   const workspacePaneCounts = useMemo(() => {
     const result: Record<string, { count: number; label: string }> = {};
@@ -364,27 +378,32 @@ export function App() {
     <div className="flex flex-col h-screen bg-transparent">
       <TitleBar onClose={handleCloseWindow} />
 
-      <div className="flex flex-1 min-h-0">
-        <Sidebar
-          projects={projects}
-          onLaunchProject={handleLaunchProject}
-          onAddProject={() => setShowAddProject(true)}
-          onEditProject={(project) => setEditProject(project)}
-          onDeleteProject={async (project) => {
-            const ok = await confirm({
-              title: `Remove "${project.name}" from cockpit?`,
-              body: "This only removes the project entry — your files and Claude sessions are untouched.",
-              confirmLabel: "Remove",
-            });
-            if (!ok) return;
-            removeProject(project.id);
-            play("click");
-          }}
-          onReorderProjects={reorderProjects}
-          onNewTerminal={() => handleNewTerminal()}
-          onNewNote={() => handleNewPane("note")}
-          onResumeSession={handleResumeSession}
-        />
+      <div className="relative flex flex-1 min-h-0">
+        <SidebarReveal pinned={sidebarPinned}>
+          <Sidebar
+            projects={projects}
+            terminalCounts={projectTerminalCounts}
+            pinned={sidebarPinned}
+            onTogglePin={toggleSidebarPinned}
+            onLaunchProject={handleLaunchProject}
+            onAddProject={() => setShowAddProject(true)}
+            onEditProject={(project) => setEditProject(project)}
+            onDeleteProject={async (project) => {
+              const ok = await confirm({
+                title: `Remove "${project.name}" from cockpit?`,
+                body: "This only removes the project entry — your files and Claude sessions are untouched.",
+                confirmLabel: "Remove",
+              });
+              if (!ok) return;
+              removeProject(project.id);
+              play("click");
+            }}
+            onReorderProjects={reorderProjects}
+            onNewTerminal={() => handleNewTerminal()}
+            onNewNote={() => handleNewPane("note")}
+            onResumeSession={handleResumeSession}
+          />
+        </SidebarReveal>
 
         <div className="flex-1 flex flex-col min-w-0">
           <WorkspaceBar

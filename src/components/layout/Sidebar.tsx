@@ -13,6 +13,8 @@ import {
   Trash2,
   GripVertical,
   Star,
+  Pin,
+  PinOff,
 } from "lucide-react";
 import type { Project } from "../../types/project";
 import { ProviderMenu } from "../terminal/ProviderMenu";
@@ -25,6 +27,11 @@ import { getSessions, setSessionStarred } from "../../lib/ipc";
 
 interface SidebarProps {
   projects: Project[];
+  /** Live terminal count per project id for THIS window (zero-count ids absent). */
+  terminalCounts: Map<string, number>;
+  /** Docked (true) vs hidden-with-edge-hover (false). */
+  pinned: boolean;
+  onTogglePin: () => void;
   onLaunchProject: (project: Project, provider?: string) => void;
   onAddProject: () => void;
   onEditProject: (project: Project) => void;
@@ -82,6 +89,7 @@ type ContextMenuState =
 
 function ProjectSection({
   project,
+  terminalCount,
   isDragging,
   isDragOver,
   onLaunch,
@@ -92,6 +100,7 @@ function ProjectSection({
   rowDragProps,
 }: {
   project: Project;
+  terminalCount: number;
   isDragging: boolean;
   isDragOver: boolean;
   onLaunch: (provider?: string) => void;
@@ -195,8 +204,16 @@ function ProjectSection({
             style={{ backgroundColor: project.color }}
           />
           <div className="flex-1 min-w-0">
-            <div className="text-sm text-foreground truncate">
+            <div
+              className="text-sm text-foreground truncate"
+              title={project.name}
+            >
               {project.name}
+              {terminalCount > 0 && (
+                <span className="ml-1.5 text-xs text-foreground-muted tabular-nums">
+                  ({terminalCount})
+                </span>
+              )}
             </div>
           </div>
         </button>
@@ -293,6 +310,9 @@ function ProjectSection({
 
 export function Sidebar({
   projects,
+  terminalCounts,
+  pinned,
+  onTogglePin,
   onLaunchProject,
   onAddProject,
   onEditProject,
@@ -345,6 +365,15 @@ export function Sidebar({
     <div className="w-56 flex flex-col bg-background-secondary/25 backdrop-blur-2xl border-r border-white/10 h-full">
       {/* Quick actions */}
       <div className="p-3 space-y-1">
+        <div className="flex justify-end">
+          <button
+            onClick={onTogglePin}
+            title={pinned ? "Unpin sidebar (Cmd+B)" : "Pin sidebar (Cmd+B)"}
+            className="p-1.5 rounded-md text-foreground-muted hover:text-foreground hover:bg-white/5"
+          >
+            {pinned ? <PinOff size={13} /> : <Pin size={13} />}
+          </button>
+        </div>
         <button
           onClick={onNewTerminal}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-foreground-muted hover:text-foreground hover:bg-white/5"
@@ -367,6 +396,7 @@ export function Sidebar({
           <ProjectSection
             key={project.id}
             project={project}
+            terminalCount={terminalCounts.get(project.id) ?? 0}
             isDragging={dragIndex === index}
             isDragOver={overIndex === index && dragIndex !== index}
             onLaunch={(provider) => onLaunchProject(project, provider)}
