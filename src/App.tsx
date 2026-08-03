@@ -1,11 +1,10 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import type { CSSProperties } from "react";
 import { getCurrentWindow, getAllWindows } from "@tauri-apps/api/window";
-import { TitleBar } from "./components/layout/TitleBar";
+import { TopBar } from "./components/layout/TopBar";
 import { Sidebar } from "./components/layout/Sidebar";
 import { SidebarReveal } from "./components/layout/SidebarReveal";
 import { StatusBar } from "./components/layout/StatusBar";
-import { WorkspaceBar } from "./components/layout/WorkspaceBar";
 import { TerminalGrid } from "./components/terminal/TerminalGrid";
 import { RestoreModal } from "./components/terminal/RestoreModal";
 import { AddProjectModal } from "./components/project/AddProjectModal";
@@ -376,7 +375,19 @@ export function App() {
       style={{ "--scrim": theme.scrim } as CSSProperties}
     />
     <div className="flex flex-col h-screen bg-transparent">
-      <TitleBar onClose={handleCloseWindow} />
+      <TopBar
+        workspaces={workspaces}
+        activeId={activeWorkspaceId}
+        counts={workspaceCounts}
+        paneCounts={workspacePaneCounts}
+        onSwitch={switchWorkspace}
+        onCreate={createWorkspace}
+        onRename={renameWorkspace}
+        onDelete={handleDeleteWorkspace}
+        onReorder={reorderWorkspaces}
+        onNewWindow={() => openWindow().catch(console.error)}
+        onCloseWindow={handleCloseWindow}
+      />
 
       <div className="relative flex flex-1 min-h-0">
         <SidebarReveal pinned={sidebarPinned}>
@@ -406,19 +417,6 @@ export function App() {
         </SidebarReveal>
 
         <div className="flex-1 flex flex-col min-w-0">
-          <WorkspaceBar
-            workspaces={workspaces}
-            activeId={activeWorkspaceId}
-            counts={workspaceCounts}
-            paneCounts={workspacePaneCounts}
-            onSwitch={switchWorkspace}
-            onCreate={createWorkspace}
-            onRename={renameWorkspace}
-            onDelete={handleDeleteWorkspace}
-            onReorder={reorderWorkspaces}
-            onNewWindow={() => openWindow().catch(console.error)}
-          />
-
           {/* One canvas per workspace, stacked. Inactive ones stay mounted
               (terminals keep running, screens stay live) but hidden, so
               switching workspaces never blanks a session. */}
