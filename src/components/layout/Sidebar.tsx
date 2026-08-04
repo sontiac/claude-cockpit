@@ -12,7 +12,8 @@ import {
   Wrench,
   Pencil,
   Trash2,
-  GripVertical,
+  ArrowUp,
+  ArrowDown,
   Star,
   Pin,
   PinOff,
@@ -92,19 +93,13 @@ type ContextMenuState =
 function ProjectSection({
   project,
   terminalCount,
-  isDragging,
-  isDragOver,
   onLaunch,
   onResume,
   onContextMenu,
   onSessionContextMenu,
-  dragHandleProps,
-  rowDragProps,
 }: {
   project: Project;
   terminalCount: number;
-  isDragging: boolean;
-  isDragOver: boolean;
   onLaunch: (provider?: string) => void;
   onResume: (
     sessionId: string,
@@ -114,8 +109,6 @@ function ProjectSection({
   ) => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onSessionContextMenu: (e: React.MouseEvent, session: Session) => void;
-  dragHandleProps: React.HTMLAttributes<HTMLButtonElement> & { draggable: boolean };
-  rowDragProps: React.HTMLAttributes<HTMLDivElement>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -174,24 +167,10 @@ function ProjectSection({
   );
 
   return (
-    <div
-      {...rowDragProps}
-      className={`rounded-lg transition-colors ${
-        isDragging ? "opacity-40" : ""
-      } ${isDragOver ? "ring-1 ring-accent-cyan/60 bg-accent-cyan/5" : ""}`}
-    >
-      {/* Project header */}
+    <div className="rounded-lg">
+      {/* Project header. Reordering lives in the right-click menu (Move
+          up/down), so the row spends no width on a drag handle. */}
       <div className="flex items-center gap-1 group" onContextMenu={onContextMenu}>
-        {/* Drag handle — only this initiates a reorder drag, so clicking the
-            row to expand never starts a drag by accident. */}
-        <button
-          {...dragHandleProps}
-          className="p-0.5 rounded text-foreground-muted/40 hover:text-foreground-muted opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing flex-shrink-0"
-          title="Drag to reorder"
-          tabIndex={-1}
-        >
-          <GripVertical size={12} />
-        </button>
         <button
           onClick={() => setExpanded(!expanded)}
           className="flex items-center gap-2 flex-1 min-w-0 px-1 py-2 rounded-lg text-left hover:bg-white/5"
@@ -326,10 +305,6 @@ export function Sidebar({
 }: SidebarProps) {
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const providers = useProviders();
-  // Index of the row being dragged and the row currently hovered as a drop
-  // target. Both reset to null when a drag ends.
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [overIndex, setOverIndex] = useState<number | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   // Dismiss the context menu on any outside click, Escape, or scroll.
@@ -361,18 +336,17 @@ export function Sidebar({
     return release;
   }, [isMenuOpen, hold, release]);
 
-  const handleDrop = useCallback(
-    (toIndex: number) => {
-      setOverIndex(null);
-      const from = dragIndex;
-      setDragIndex(null);
-      if (from === null || from === toIndex) return;
+  /** Swap a project one slot up (-1) or down (+1) in the sidebar order. */
+  const moveProject = useCallback(
+    (project: Project, delta: -1 | 1) => {
+      const from = projects.findIndex((p) => p.id === project.id);
+      const to = from + delta;
+      if (from === -1 || to < 0 || to >= projects.length) return;
       const next = projects.map((p) => p.id);
-      const [moved] = next.splice(from, 1);
-      next.splice(toIndex, 0, moved);
+      [next[from], next[to]] = [next[to], next[from]];
       onReorderProjects(next);
     },
-    [dragIndex, projects, onReorderProjects]
+    [projects, onReorderProjects]
   );
 
   return (
@@ -406,13 +380,11 @@ export function Sidebar({
 
       {/* Projects + sessions */}
       <div className="flex-1 overflow-y-auto px-2 pb-3">
-        {projects.map((project, index) => (
+        {projects.map((project) => (
           <ProjectSection
             key={project.id}
             project={project}
             terminalCount={terminalCounts.get(project.id) ?? 0}
-            isDragging={dragIndex === index}
-            isDragOver={overIndex === index && dragIndex !== index}
             onLaunch={(provider) => onLaunchProject(project, provider)}
             onResume={onResumeSession}
             onContextMenu={(e) => {
@@ -428,31 +400,6 @@ export function Sidebar({
                 x: e.clientX,
                 y: e.clientY,
               });
-            }}
-            dragHandleProps={{
-              draggable: true,
-              onDragStart: (e) => {
-                e.dataTransfer.effectAllowed = "move";
-                // Firefox requires data to be set for a drag to start.
-                e.dataTransfer.setData("text/plain", project.id);
-                setDragIndex(index);
-              },
-              onDragEnd: () => {
-                setDragIndex(null);
-                setOverIndex(null);
-              },
-            }}
-            rowDragProps={{
-              onDragOver: (e) => {
-                if (dragIndex === null) return;
-                e.preventDefault();
-                e.dataTransfer.dropEffect = "move";
-                if (overIndex !== index) setOverIndex(index);
-              },
-              onDrop: (e) => {
-                e.preventDefault();
-                handleDrop(index);
-              },
             }}
           />
         ))}
@@ -484,6 +431,31 @@ export function Sidebar({
           >
             {menu.kind === "project" ? (
               <>
+                <button
+                  disabled={projects.findIndex((p) => p.id === menu.project.id) === 0}
+                  onClick={() => {
+                    moveProject(menu.project, -1);
+                    setMenu(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-white/5 disabled:opacity-40 disabled:hover:bg-transparent"
+                >
+                  <ArrowUp size={13} />
+                  Move up
+                </button>
+                <button
+                  disabled={
+                    projects.findIndex((p) => p.id === menu.project.id) ===
+                    projects.length - 1
+                  }
+                  onClick={() => {
+                    moveProject(menu.project, 1);
+                    setMenu(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-white/5 disabled:opacity-40 disabled:hover:bg-transparent"
+                >
+                  <ArrowDown size={13} />
+                  Move down
+                </button>
                 <button
                   onClick={() => {
                     onEditProject(menu.project);

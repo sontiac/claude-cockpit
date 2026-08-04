@@ -147,27 +147,49 @@ describe("Sidebar session starring", () => {
 });
 
 describe("Sidebar project reordering", () => {
-  // Requires dragDropEnabled=false in tauri.conf.json (and
-  // disable_drag_drop_handler in open_window) — with Tauri's native handler
-  // on, DOM drop events never fire on macOS and this flow is dead in the app
-  // no matter what the React handlers do.
-  it("reorders projects when a row is dragged onto another", () => {
-    const projects = [
-      { ...project, id: "p1", name: "alpha" },
-      { ...project, id: "p2", name: "beta" },
-      { ...project, id: "p3", name: "gamma" },
-    ];
+  // Reordering lives in the right-click menu (Move up / Move down) rather
+  // than drag-and-drop: HTML5 dnd is dead once Tauri's native drag-drop
+  // handler is enabled, and the per-row drag handle wasted row width.
+  const projects = [
+    { ...project, id: "p1", name: "alpha" },
+    { ...project, id: "p2", name: "beta" },
+    { ...project, id: "p3", name: "gamma" },
+  ];
+
+  it("moves a project up one slot from its context menu", () => {
     const onReorderProjects = vi.fn();
     renderSidebar({ projects, onReorderProjects });
-    const dt = { effectAllowed: "", dropEffect: "", setData: vi.fn() };
-    const handles = screen.getAllByTitle("Drag to reorder");
-    fireEvent.dragStart(handles[0], { dataTransfer: dt });
-    expect(dt.setData).toHaveBeenCalledWith("text/plain", "p1");
-    // Drop anywhere inside the "gamma" row — the drop handler sits on the row
-    // and the event bubbles.
-    fireEvent.dragOver(screen.getByText("gamma"), { dataTransfer: dt });
-    fireEvent.drop(screen.getByText("gamma"), { dataTransfer: dt });
-    expect(onReorderProjects).toHaveBeenCalledWith(["p2", "p3", "p1"]);
+    fireEvent.contextMenu(screen.getByText("beta"));
+    fireEvent.click(screen.getByText("Move up"));
+    expect(onReorderProjects).toHaveBeenCalledWith(["p2", "p1", "p3"]);
+    // The menu closes after picking.
+    expect(screen.queryByText("Move up")).not.toBeInTheDocument();
+  });
+
+  it("moves a project down one slot from its context menu", () => {
+    const onReorderProjects = vi.fn();
+    renderSidebar({ projects, onReorderProjects });
+    fireEvent.contextMenu(screen.getByText("beta"));
+    fireEvent.click(screen.getByText("Move down"));
+    expect(onReorderProjects).toHaveBeenCalledWith(["p1", "p3", "p2"]);
+  });
+
+  it("disables Move up on the first project and Move down on the last", () => {
+    renderSidebar({ projects });
+
+    fireEvent.contextMenu(screen.getByText("alpha"));
+    expect(screen.getByText("Move up").closest("button")).toBeDisabled();
+    expect(screen.getByText("Move down").closest("button")).not.toBeDisabled();
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    fireEvent.contextMenu(screen.getByText("gamma"));
+    expect(screen.getByText("Move down").closest("button")).toBeDisabled();
+    expect(screen.getByText("Move up").closest("button")).not.toBeDisabled();
+  });
+
+  it("renders no drag handle on project rows", () => {
+    renderSidebar({ projects });
+    expect(screen.queryByTitle("Drag to reorder")).not.toBeInTheDocument();
   });
 });
 
