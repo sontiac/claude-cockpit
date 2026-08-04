@@ -69,20 +69,27 @@ terminal status changes (for readback and future phone remote).
 
 ### 2. Voice sidecar (Node + Anthropic SDK Tool Runner)
 
-> **Amended 2026-08-03 (user-approved):** the agent harness is the Anthropic
-> SDK's **Tool Runner** (`client.beta.messages.toolRunner` + `betaZodTool`),
-> not the Claude Agent SDK — the agent is a small custom-tool loop over the
-> control channel and needs none of the Agent SDK's filesystem/bash harness.
-> **Mic capture moves to the cockpit webview** (`getUserMedia` + AudioWorklet
+> **Amended 2026-08-03 (second revision, user-directed):** the agent harness
+> is the **Claude Agent SDK** (`@anthropic-ai/claude-agent-sdk`) after all —
+> not the API Tool Runner. The deciding factor is billing: the Agent SDK
+> authenticates through the existing Claude Code login and runs on the
+> user's **plan**, while the Tool Runner requires a metered API key. The
+> Agent SDK is also exactly the clean form of the "dedicated Voice session"
+> idea: each voice conversation is a real headless Claude Code session
+> (`resume`-chained per utterance, visible on disk like any other session),
+> with `tools: []` stripping every built-in so the model sees only the
+> cockpit tools (in-process MCP via `createSdkMcpServer`).
+> **Mic capture stays in the cockpit webview** (`getUserMedia` + AudioWorklet
 > → 16kHz mono WAV): Node has no native mic API and every mic package shells
 > out to sox or needs fragile native builds. The sidecar still owns STT,
 > the agent, and TTS. whisper.cpp is already installed on this machine
 > (`whisper-cli` via Homebrew); only a model download is needed.
 
 Spawned and supervised by cockpit (auto-restart on crash, killed on quit).
-Owns whisper.cpp transcription, TTS, and a Tool Runner agent whose tools
-map 1:1 onto the control channel commands. Model + effort are config knobs
-(default `claude-opus-5` at low effort for snappy voice turns).
+Owns whisper.cpp transcription, TTS, and an Agent SDK session whose tools
+map 1:1 onto the control channel commands. Model is a config knob
+(default `sonnet` — the user's chosen controller tier; billed to the plan,
+not an API key).
 
 - Push-to-talk flow: cockpit's global-shortcut handler (Tauri
   global-shortcut plugin, hold-to-talk via pressed/released states) tells

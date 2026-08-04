@@ -4,9 +4,9 @@
 
 **Goal:** Push-to-talk voice control of cockpit — spawn/close/focus terminals, switch workspaces, dictate prompts into the focused terminal, hear status readbacks — via a supervised Node sidecar and a token-authed localhost WS control channel that a future phone remote reuses.
 
-**Architecture:** Three pieces. (1) A **Rust control server** inside the Tauri backend: localhost WebSocket, token auth, JSON-RPC-ish dispatch — some commands answered from a frontend-pushed state mirror or executed directly (ptyWrite), others forwarded to the frontend over Tauri events. (2) **Frontend**: a dispatcher hook applying forwarded commands + pushing state snapshots, a PTT mic-capture hook (getUserMedia → AudioWorklet → 16kHz WAV), and a StatusBar indicator. (3) A **Node sidecar** (spawned/supervised by Rust): whisper.cpp transcription, an Anthropic **Tool Runner** agent whose tools call the control channel, and TTS via macOS `say`.
+**Architecture:** Three pieces. (1) A **Rust control server** inside the Tauri backend: localhost WebSocket, token auth, JSON-RPC-ish dispatch — some commands answered from a frontend-pushed state mirror or executed directly (ptyWrite), others forwarded to the frontend over Tauri events. (2) **Frontend**: a dispatcher hook applying forwarded commands + pushing state snapshots, a PTT mic-capture hook (getUserMedia → AudioWorklet → 16kHz WAV), and a StatusBar indicator. (3) A **Node sidecar** (spawned/supervised by Rust): whisper.cpp transcription, a **Claude Agent SDK** session (`query()` with `resume`-chained session ids, `tools: []` so only the cockpit MCP tools exist) whose tools call the control channel, and TTS via macOS `say`. The Agent SDK authenticates via the existing Claude Code login — **plan-billed, no API key**.
 
-**Tech Stack:** Rust (tokio, tokio-tungstenite), Tauri v2 + `tauri-plugin-global-shortcut`, React 19 + TS, Vitest, Node + TypeScript sidecar (`@anthropic-ai/sdk` Tool Runner, `betaZodTool`/zod, `ws`), `whisper-cli` (already installed via Homebrew), `/usr/bin/say`.
+**Tech Stack:** Rust (tokio, tokio-tungstenite), Tauri v2 + `tauri-plugin-global-shortcut`, React 19 + TS, Vitest, Node + TypeScript sidecar (`@anthropic-ai/claude-agent-sdk` + zod, `ws`), `whisper-cli` (already installed via Homebrew), `/usr/bin/say`.
 
 **Spec:** `docs/superpowers/specs/2026-08-03-voice-agent-design.md` (as amended: Tool Runner harness; webview mic capture).
 
@@ -14,7 +14,7 @@
 
 - Control server binds `127.0.0.1` only, ephemeral port; every client's **first frame** must be `{"auth": "<token>"}` with the token minted at startup — anything else closes the socket. Token reaches the sidecar via env only, never disk.
 - Dictated text is written to the PTY **without** a trailing newline unless the transcript asks to send/submit (the agent controls a `submit` flag). `close_pane` requires an explicit pane reference from the user.
-- The agent model/effort are config (`~/.claude-cockpit/voice.json`), default `claude-opus-5` + `effort: "low"`. Use the exact model string `claude-opus-5`.
+- The agent model is config (`~/.claude-cockpit/voice.json`), default `"sonnet"` (Claude Code model alias). The sidecar must run with **no** `ANTHROPIC_API_KEY` in its env (strip it when spawning) so the Agent SDK resolves the Claude Code plan login.
 - Never launch or kill the production cockpit app; build only. The user smoke-tests voice.
 - Every task ends green: `npx tsc --noEmit && npm test` at repo root; `cargo test` in `src-tauri/` for Rust tasks; `npm test` in `voice-sidecar/` for sidecar tasks.
 - Existing behavior is untouched when the sidecar is absent or dead: cockpit must run exactly as today (indicator shows error state; nothing else changes).
@@ -189,7 +189,7 @@ The hook (a) debounce-pushes `snapshot` via `pushControlState` whenever it chang
 - Create: `src-tauri/src/control/sidecar.rs`
 - Modify: `src-tauri/src/lib.rs` (spawn after server start; kill on `RunEvent::Exit`), `src-tauri/tauri.conf.json` (`bundle.resources` maps `../voice-sidecar/dist/` → `voice-sidecar/`)
 
-**Behavior:** resolve entry as `$COCKPIT_VOICE_SIDECAR` (dev override) else `<resource_dir>/voice-sidecar/index.js`; if the file is missing or `node` isn't on PATH, emit `voice:status {state:"error", detail}` and stop (cockpit unaffected). Spawn `node <entry>` with env `COCKPIT_CONTROL_PORT`, `COCKPIT_CONTROL_TOKEN`; on exit, respawn with backoff 1s→2s→4s→…→30s cap; give up after 5 consecutive crashes within 60s (error status). Kill child on app exit.
+**Behavior:** resolve entry as `$COCKPIT_VOICE_SIDECAR` (dev override) else `<resource_dir>/voice-sidecar/index.js`; if the file is missing or `node` isn't on PATH, emit `voice:status {state:"error", detail}` and stop (cockpit unaffected). Spawn `node <entry>` with env `COCKPIT_CONTROL_PORT`, `COCKPIT_CONTROL_TOKEN`, and **`ANTHROPIC_API_KEY` removed** from the inherited env (the Agent SDK must resolve the Claude Code plan login, not a metered key); on exit, respawn with backoff 1s→2s→4s→…→30s cap; give up after 5 consecutive crashes within 60s (error status). Kill child on app exit.
 
 - [ ] **Step 1: Failing tests for the pure pieces** — `backoff_delay(attempt) -> Duration` (1,2,4,…,30 cap) and `should_give_up(crash_times: &[Instant], now) -> bool` (5 within 60s). 
 - [ ] **Step 2: RED → implement → GREEN.** Supervision loop itself is thin glue around these (spawn via `std::process::Command`, monitor thread) — no test, verified in Task 10 smoke.
@@ -205,7 +205,7 @@ The hook (a) debounce-pushes `snapshot` via `pushControlState` whenever it chang
 **Behavior:** read `~/.claude-cockpit/voice.json` (serde, all fields optional):
 
 ```jsonc
-{ "hotkey": "CmdOrCtrl+Shift+Space", "model": "claude-opus-5", "effort": "low", "whisperModel": "small.en" }
+{ "hotkey": "CmdOrCtrl+Shift+Space", "model": "sonnet", "whisperModel": "small.en" }
 ```
 
 Register the hotkey with `tauri_plugin_global_shortcut::Builder::new().with_handler(...)`; on `ShortcutState::Pressed` → `app.emit("voice:ptt", "down")` **and** `broadcast({"event":"ptt","state":"down"})`; `Released` → same with `"up"`. Registration failure (hotkey taken) ⇒ `voice:status` error, not a crash.
@@ -248,7 +248,7 @@ Register the hotkey with `tauri_plugin_global_shortcut::Builder::new().with_hand
 
 **Files:**
 - Create: `voice-sidecar/package.json`, `voice-sidecar/tsconfig.json`, `voice-sidecar/vitest.config.ts`, `voice-sidecar/src/channel.ts`, `voice-sidecar/src/channel.test.ts`, `voice-sidecar/src/config.ts`, `voice-sidecar/src/config.test.ts`
-- `package.json`: deps `@anthropic-ai/sdk`, `ws`, `zod`; dev `typescript`, `vitest`, `esbuild`, `@types/ws`, `@types/node`; scripts `build: esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=dist/index.js`, `test: vitest run`, `typecheck: tsc --noEmit`.
+- `package.json`: deps `@anthropic-ai/claude-agent-sdk`, `ws`, `zod`; dev `typescript`, `vitest`, `esbuild`, `@types/ws`, `@types/node`; scripts `build: esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=dist/index.js --external:@anthropic-ai/claude-agent-sdk` (the SDK drives the `claude` binary and must not be inlined — ship `node_modules` for it alongside, or run unbundled with `node --enable-source-maps`; pick whichever the build step verifies works, and record the choice), `test: vitest run`, `typecheck: tsc --noEmit`.
 
 **Interfaces (Tasks 9–11 consume):**
 
@@ -262,7 +262,7 @@ export interface Channel {
 }
 export function createChannel(port: number, token: string): Channel;
 // config.ts
-export interface VoiceConfig { model: string; effort: "low"|"medium"|"high"; whisperModel: string; }
+export interface VoiceConfig { model: string; whisperModel: string; }
 export function loadConfig(path?: string): VoiceConfig; // ~/.claude-cockpit/voice.json, defaults as in Task 5
 ```
 
@@ -296,63 +296,76 @@ export async function transcribe(wav: Buffer, cfg: VoiceConfig): Promise<string>
 
 ---
 
-### Task 10: Tool Runner agent + TTS + main loop
+### Task 10: Agent SDK session + TTS + main loop
 
 **Files:**
 - Create: `voice-sidecar/src/agent.ts`, `voice-sidecar/src/agent.test.ts`, `voice-sidecar/src/speak.ts`, `voice-sidecar/src/index.ts`
 
-**Agent (`agent.ts`):**
+**Agent (`agent.ts`)** — a headless Claude Code session on the user's plan.
+Each utterance is one `query()`; continuity comes from `resume`-chaining the
+session id, so the whole voice conversation is a single real session on disk
+(visible in cockpit's sidebar like any other). `tools: []` strips every
+built-in — the model sees only the cockpit MCP tools.
+
+> Before coding, verify the option names used below (`systemPrompt`, `tools`,
+> `mcpServers`, `allowedTools`, `resume`, `model`) against the TypeScript
+> reference at `code.claude.com/docs/en/agent-sdk/typescript` — adjust to
+> what the installed SDK version exports, and record any differences.
 
 ```typescript
-import Anthropic from "@anthropic-ai/sdk";
-import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
+import { query, tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 
-export function buildTools(channel: Channel) {
-  return [
-    betaZodTool({
-      name: "get_state",
-      description: "Current cockpit state: workspaces, terminals (with focus + status), projects. Call this first whenever the user references anything by name.",
-      inputSchema: z.object({}),
-      run: async () => JSON.stringify(await channel.request("get_state")),
-    }),
-    betaZodTool({
-      name: "write_to_pane",
-      description: "Type text into a terminal. Call this for dictation. Set submit=true ONLY when the user explicitly said to send/submit/run it — otherwise the text is left for them to review.",
-      inputSchema: z.object({
-        paneId: z.string().optional().describe("Target terminal id from get_state; omit for the focused terminal"),
-        text: z.string(),
-        submit: z.boolean().default(false),
-      }),
-      run: async (input) => JSON.stringify(await channel.request("write_to_pane", input)),
-    }),
-    betaZodTool({
-      name: "spawn_terminal",
-      description: "Open a new terminal, optionally for a named project / provider / workspace.",
-      inputSchema: z.object({
-        projectName: z.string().optional(), provider: z.string().optional(), workspaceName: z.string().optional(),
-      }),
-      run: async (input) => JSON.stringify(await channel.request("spawn_terminal", input)),
-    }),
-    betaZodTool({
-      name: "switch_workspace",
-      description: "Switch to a workspace by its exact name (resolve via get_state first).",
-      inputSchema: z.object({ name: z.string() }),
-      run: async (input) => JSON.stringify(await channel.request("switch_workspace", input)),
-    }),
-    betaZodTool({
-      name: "focus_pane",
-      description: "Focus a terminal by its exact label (resolve via get_state first).",
-      inputSchema: z.object({ label: z.string() }),
-      run: async (input) => JSON.stringify(await channel.request("focus_pane", input)),
-    }),
-    betaZodTool({
-      name: "close_pane",
-      description: "Close a terminal. Only call when the user named a specific terminal explicitly — never guess a target.",
-      inputSchema: z.object({ label: z.string() }),
-      run: async (input) => JSON.stringify(await channel.request("close_pane", input)),
-    }),
-  ];
+const text = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data) }] });
+
+export function buildServer(channel: Channel) {
+  return createSdkMcpServer({
+    name: "cockpit",
+    version: "1.0.0",
+    tools: [
+      tool(
+        "get_state",
+        "Current cockpit state: workspaces, terminals (with focus + status), projects. Call this first whenever the user references anything by name.",
+        {},
+        async () => text(await channel.request("get_state")),
+        { annotations: { readOnlyHint: true } }
+      ),
+      tool(
+        "write_to_pane",
+        "Type text into a terminal. Use for dictation. Set submit=true ONLY when the user explicitly said to send/submit/run it — otherwise the text is left for review.",
+        {
+          paneId: z.string().optional().describe("Terminal id from get_state; omit for the focused terminal"),
+          text: z.string(),
+          submit: z.boolean().default(false),
+        },
+        async (args) => text(await channel.request("write_to_pane", args))
+      ),
+      tool(
+        "spawn_terminal",
+        "Open a new terminal, optionally for a named project / provider / workspace.",
+        { projectName: z.string().optional(), provider: z.string().optional(), workspaceName: z.string().optional() },
+        async (args) => text(await channel.request("spawn_terminal", args))
+      ),
+      tool(
+        "switch_workspace",
+        "Switch to a workspace by its exact name (resolve via get_state first).",
+        { name: z.string() },
+        async (args) => text(await channel.request("switch_workspace", args))
+      ),
+      tool(
+        "focus_pane",
+        "Focus a terminal by its exact label (resolve via get_state first).",
+        { label: z.string() },
+        async (args) => text(await channel.request("focus_pane", args))
+      ),
+      tool(
+        "close_pane",
+        "Close a terminal. Only call when the user named a specific terminal explicitly — never guess a target.",
+        { label: z.string() },
+        async (args) => text(await channel.request("close_pane", args))
+      ),
+    ],
+  });
 }
 
 const SYSTEM = `You are the voice controller for Claude Cockpit, a terminal manager.
@@ -361,28 +374,45 @@ Dictation: when the user is telling a terminal's Claude something, use write_to_
 Never close anything the user did not explicitly name. If a name is ambiguous, ask (briefly) instead of guessing.`;
 
 export async function handleUtterance(
-  client: Anthropic, cfg: VoiceConfig, channel: Channel,
-  history: Anthropic.Beta.BetaMessageParam[], transcript: string,
-): Promise<{ spoken: string; history: Anthropic.Beta.BetaMessageParam[] }> {
-  const messages = [...history, { role: "user" as const, content: transcript }];
-  const final = await client.beta.messages.toolRunner({
-    model: cfg.model, max_tokens: 2048,
-    output_config: { effort: cfg.effort },
-    system: SYSTEM, tools: buildTools(channel), messages,
-  });
-  const spoken = final.content.filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
-  return { spoken, history: [...messages, { role: "assistant", content: final.content }].slice(-20) };
+  cfg: VoiceConfig, channel: Channel,
+  sessionId: string | null, transcript: string,
+): Promise<{ spoken: string; sessionId: string | null }> {
+  let spoken = "";
+  let sid = sessionId;
+  for await (const message of query({
+    prompt: transcript,
+    options: {
+      model: cfg.model,
+      systemPrompt: SYSTEM,
+      tools: [],                                   // no built-ins: cockpit tools only
+      mcpServers: { cockpit: buildServer(channel) },
+      allowedTools: ["mcp__cockpit__*"],
+      ...(sessionId ? { resume: sessionId } : {}),
+    },
+  })) {
+    if (message.type === "system" && message.subtype === "init") sid = message.session_id;
+    if (message.type === "result") {
+      sid = message.session_id ?? sid;
+      if (message.subtype === "success") spoken = message.result.trim();
+    }
+  }
+  return { spoken, sessionId: sid };
 }
 ```
 
+**Auth note:** the sidecar must inherit the user's login environment but the
+supervisor (Task 4) strips `ANTHROPIC_API_KEY` from the child env so the
+Agent SDK resolves the Claude Code plan credentials — voice turns bill to
+the plan, not to a metered key.
+
 **TTS (`speak.ts`):** `speak(text, spawnFn = spawn)` — kill any previous `say` child, spawn `/usr/bin/say` with `[text]`, resolve on exit. Empty text ⇒ no-op.
 
-**Main (`index.ts`):** read env port/token → `createChannel.connect()` → `sendStatus("idle")` → `ensureModel` (progress → `sendStatus("idle", "downloading model 42%")`) → on `{"event":"ptt","state":"down"}` → `sendStatus("listening")`; on `{"event":"utterance"}` → `transcribing` → `transcribe` → `thinking` → `handleUtterance` → `speaking` → `speak` → `idle`. Any thrown error → `sendStatus("error", msg)` then back to `idle` on next PTT. Client uses the zero-arg `new Anthropic()` (env key or `ant auth login` profile).
+**Main (`index.ts`):** read env port/token → `createChannel.connect()` → `sendStatus("idle")` → `ensureModel` (progress → `sendStatus("idle", "downloading model 42%")`) → on `{"event":"ptt","state":"down"}` → `sendStatus("listening")`; on `{"event":"utterance"}` → `transcribing` → `transcribe` → `thinking` → `handleUtterance` (threading the held `sessionId`; store the returned one) → `speaking` → `speak` → `idle`. Any thrown error → `sendStatus("error", msg)` then back to `idle` on next PTT. The Agent SDK resolves the Claude Code plan login on its own — no client construction, no API key.
 
-- [ ] **Step 1: Failing tests (`agent.test.ts`)** — with a fake `Channel` (records requests) and the Anthropic client mocked at module boundary (`vi.mock("@anthropic-ai/sdk")` so `toolRunner` invokes the provided tools' `run` directly):
-  - `buildTools` `write_to_pane` run sends `{text, submit:false}` by default (dictation guard).
-  - `close_pane` tool passes the exact label through.
-  - `handleUtterance` returns joined text-block content as `spoken` and appends both turns to history, capped at 20 entries.
+- [ ] **Step 1: Failing tests (`agent.test.ts`)** — mock `@anthropic-ai/claude-agent-sdk` at the module boundary: the mocked `tool()` records `(name, description, schema, handler)` so tests can invoke handlers directly; the mocked `query()` is a controllable async generator:
+  - `buildServer`'s `write_to_pane` handler, invoked with `{text: "hi"}` after Zod-parsing through the recorded schema, sends `{text: "hi", submit: false}` to the channel (dictation guard default).
+  - `close_pane` handler passes the exact label through; `get_state` carries `readOnlyHint`.
+  - `handleUtterance` passes `resume` only when a session id is held, captures the id from the init/result messages, and returns the success `result` as `spoken`.
   - `speak("")` never spawns; `speak("hi", fake)` spawns `/usr/bin/say` with `["hi"]` and kills a still-running previous child first.
 - [ ] **Step 2: RED → implement → GREEN** (`cd voice-sidecar && npm test && npm run typecheck && npm run build`).
 - [ ] **Step 3: Commit** — `feat(voice-sidecar): tool-runner agent, TTS, main loop`
@@ -407,7 +437,7 @@ export async function handleUtterance(
 
 ## Self-Review (completed at plan-writing time)
 
-- **Spec coverage:** control channel + token auth + loopback (Tasks 1–2); state mirror (2–3); command surface incl. write/spawn/switch/focus/close + dictation guard (2, 3, 10); PTT hotkey (5); webview mic capture (6–7); whisper STT + model download w/ progress (9); Tool Runner agent + config model/effort (10); TTS via `say` behind `speak` (10); StatusBar indicator incl. error states for dead sidecar/failed hotkey (4, 5, 7); supervision + clean shutdown (4, 11). Out of scope per spec: wake word, phone client, barge-in, conversational session analysis.
+- **Spec coverage:** control channel + token auth + loopback (Tasks 1–2); state mirror (2–3); command surface incl. write/spawn/switch/focus/close + dictation guard (2, 3, 10); PTT hotkey (5); webview mic capture (6–7); whisper STT + model download w/ progress (9); Agent SDK session on plan auth + config model (4, 10); TTS via `say` behind `speak` (10); StatusBar indicator incl. error states for dead sidecar/failed hotkey (4, 5, 7); supervision + clean shutdown (4, 11). Out of scope per spec: wake word, phone client, barge-in, conversational session analysis.
 - **Sequencing:** server (2) precedes bridge (3) and sidecar tasks; capture (7) depends on encoder (6) and PTT (5); sidecar main (10) consumes 8–9.
 - **Type consistency:** `Channel`/`VoiceConfig` shapes match across Tasks 8–10; wire frames match Tasks 1–2; `StateSnapshot` defined once and referenced by 2, 3, 10.
 - **Verified environment facts:** `whisper-cli` installed (Homebrew 1.8.6); `@tauri-apps/plugin-global-shortcut` 2.3.2 exists; no `sox` (why capture is webview-side); `ffmpeg` present (used only in Task 9's manual audio check).
