@@ -43,7 +43,12 @@ frontend's ~37 Tauri commands use; a server-push event stream carries
 terminal status changes (for readback and future phone remote).
 
 - Bound to `127.0.0.1`, ephemeral port, token-authenticated (token minted at
-  startup, passed to the sidecar via its environment — never on disk).
+  startup, passed to the sidecar via its environment — never on disk). The
+  listening surface is loopback-only: a foreign local process can connect,
+  fail auth, and nothing more. *Considered and rejected:* stdio JSON-RPC over
+  the sidecar's pipes (zero listening surface) — it structurally admits only
+  one client, and this API's second client is the future phone remote;
+  starting on stdio would force a transport rewrite then.
 - v1 command surface (names indicative, finalized in the plan):
   `spawn_terminal {projectId?, provider?, workspaceId?}`,
   `switch_workspace {workspaceId}`, `focus_pane {paneId}`,
@@ -52,6 +57,12 @@ terminal status changes (for readback and future phone remote).
 - Commands that today live purely in frontend state (workspace switching,
   focus) are forwarded to the frontend over a Tauri event and applied by a
   small dispatcher hook — the WS server is the single entry point either way.
+- **State mirror:** workspace list, focus, and terminal statuses live in
+  frontend state, so the WS server cannot answer `get_state` from backend
+  data alone. The frontend dispatcher hook pushes a compact state snapshot
+  to the backend on every relevant change (debounced); `get_state` and the
+  event stream serve from that mirror. The mirror is advisory (voice/remote
+  reads), never a source of truth for persistence.
 - The phone remote later connects to this same server (auth hardening then:
   pairing, TLS or tunnel — out of scope now, but nothing in v1 may assume
   the only client is the sidecar).

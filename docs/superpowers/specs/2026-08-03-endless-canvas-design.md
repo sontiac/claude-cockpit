@@ -11,10 +11,12 @@ pan by dragging empty space, zoom out to an overview, jump back in.
 
 ## Hard constraint (user)
 
-**This is a nice-to-have: at 100% zoom the canvas must behave *exactly* as
-today.** The existing overflow-auto scroller, scrollbars, pane dragging,
-resizing, and PTY sizing are untouched when z = 1 (the default). Zoom/pan is
-a layer on top, inert until used.
+**The default view (z = 1) must look and behave exactly as today** — the
+existing overflow-auto scroller, scrollbars, pane dragging, resizing, and
+PTY sizing are untouched until the user actually zooms. What the canvas
+looks like *while zoomed out* is free to differ as much as it needs to
+(cards, hidden chrome, anything); the invariant applies only to the
+default, un-zoomed state. Zoom/pan is a layer on top, inert until used.
 
 ## Decisions (from brainstorm)
 
