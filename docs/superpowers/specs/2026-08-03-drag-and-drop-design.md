@@ -32,11 +32,16 @@ Remove `"dragDropEnabled": false` from `tauri.conf.json` and
 `src-tauri/src/commands/window.rs`. Update the comment explaining why it was
 disabled (the reorder UIs no longer use HTML5 dnd).
 
-### 2. Shared pointer-reorder hook — `src/hooks/useListReorder.ts`
+### 2. Pointer-reorder for workspace tabs — `src/hooks/useListReorder.ts`
 
-One hook replaces both hand-rolled HTML5 implementations (project reorder in
-`Sidebar.tsx`, workspace-tab reorder in `TopBar.tsx`), following the
-window-listener gesture pattern `TerminalCanvas.startGesture` already uses:
+> **Amended 2026-08-03:** sidebar project reordering moved to context-menu
+> "Move up"/"Move down" items (user request — the per-row drag handle wasted
+> row width), so the sidebar no longer uses drag-and-drop at all. Only the
+> TopBar tab reorder still needs migrating off HTML5 dnd.
+
+A hook replaces the hand-rolled HTML5 implementation for workspace-tab
+reorder in `TopBar.tsx`, following the window-listener gesture pattern
+`TerminalCanvas.startGesture` already uses:
 
 - `pointerdown` on the drag surface arms the gesture; a ~4px movement
   threshold distinguishes drag from click (tabs keep click-to-switch and
@@ -50,8 +55,7 @@ window-listener gesture pattern `TerminalCanvas.startGesture` already uses:
 - Exposes `dragIndex`/`overIndex` so both components keep their existing
   opacity/ring styling.
 
-Sidebar keeps grip-handle-only drag initiation; TopBar keeps whole-tab drag
-with the `editingId !== ws.id` guard.
+TopBar keeps whole-tab drag with the `editingId !== ws.id` guard.
 
 ### 3. File drops — `src/hooks/useFileDrop.ts` + `src/lib/shellQuote.ts`
 
@@ -82,8 +86,9 @@ quotes with embedded single quotes escaped as `'\''`.
 
 - `shellQuote` unit tests: spaces, single/double quotes, unicode, clean paths.
 - `useListReorder` via pointer-event sequences; existing drag coverage in
-  `Sidebar.test.tsx` / `TopBar.test.tsx` ported from dragstart/drop to pointer
-  events (threshold, reorder commit, click suppression, no-drag-while-renaming).
+  `TopBar.test.tsx` ported from dragstart/drop to pointer events (threshold,
+  reorder commit, click suppression, no-drag-while-renaming). Sidebar reorder
+  is covered by its context-menu tests instead.
 - `useFileDrop` with mocked `onDragDropEvent` + stubbed `elementFromPoint`:
   escaped `ptyWrite` payloads, multi-file joins, highlight lifecycle, no-op
   drops outside terminal panes.
