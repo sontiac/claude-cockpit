@@ -5,45 +5,47 @@ function makeTerm(viewportY: number, baseY: number): ScrollableTerm {
   return {
     buffer: { active: { viewportY, baseY } },
     scrollToBottom: vi.fn(),
+    scrollToLine: vi.fn(),
   };
-}
-
-function makeContainer(withViewport = true): HTMLElement {
-  const container = document.createElement("div");
-  if (withViewport) {
-    const viewport = document.createElement("div");
-    viewport.className = "xterm-viewport";
-    viewport.scrollTop = 120;
-    container.appendChild(viewport);
-  }
-  return container;
 }
 
 describe("scrollSafeFit", () => {
   it("snaps to the bottom after fitting when the viewport was at the bottom", () => {
     const term = makeTerm(50, 50); // viewportY === baseY → at bottom
     const fit: Fitter = { fit: vi.fn() };
-    scrollSafeFit(term, fit, makeContainer());
+    scrollSafeFit(term, fit);
     expect(fit.fit).toHaveBeenCalledOnce();
     expect(term.scrollToBottom).toHaveBeenCalledOnce();
+    expect(term.scrollToLine).not.toHaveBeenCalled();
   });
 
-  it("preserves the absolute scroll position when scrolled up into history", () => {
-    const term = makeTerm(10, 50); // scrolled up
+  it("restores the scrolled-up line through the terminal API, not the DOM", () => {
+    const term = makeTerm(10, 50); // scrolled up into history
     const fit: Fitter = { fit: vi.fn() };
-    const container = makeContainer();
-    const viewport = container.querySelector(".xterm-viewport") as HTMLElement;
-    scrollSafeFit(term, fit, container);
+    scrollSafeFit(term, fit);
     expect(term.scrollToBottom).not.toHaveBeenCalled();
-    expect(viewport.scrollTop).toBe(120);
-    expect(viewport.style.overflowY).toBe("");
+    expect(term.scrollToLine).toHaveBeenCalledWith(10);
   });
 
-  it("still fits (and follows the bottom) when the viewport element is missing", () => {
+  it("reads the scroll position before fitting, not after", () => {
+    // fit() reflows the buffer, which moves viewportY. The position we restore
+    // has to be the one the user was looking at *before* the resize.
+    const term = makeTerm(10, 50);
+    const fit: Fitter = {
+      fit: vi.fn(() => {
+        term.buffer.active.viewportY = 0;
+      }),
+    };
+    scrollSafeFit(term, fit);
+    expect(term.scrollToLine).toHaveBeenCalledWith(10);
+  });
+
+  it("fits before restoring, so the restore lands on the new geometry", () => {
     const term = makeTerm(50, 50);
-    const fit: Fitter = { fit: vi.fn() };
-    scrollSafeFit(term, fit, makeContainer(false));
-    expect(fit.fit).toHaveBeenCalledOnce();
-    expect(term.scrollToBottom).toHaveBeenCalledOnce();
+    const order: string[] = [];
+    const fit: Fitter = { fit: vi.fn(() => order.push("fit")) };
+    term.scrollToBottom = vi.fn(() => order.push("scroll"));
+    scrollSafeFit(term, fit);
+    expect(order).toEqual(["fit", "scroll"]);
   });
 });

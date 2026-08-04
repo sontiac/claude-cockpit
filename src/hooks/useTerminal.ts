@@ -118,13 +118,24 @@ export function useTerminal({ id, fontSize, onStatusChange, onExit, onRenameDete
         cursorStyle: "bar",
         fontSize: fontSizeRef.current,
         fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace',
-        lineHeight: 1.2,
+        // Cell height is floor(charHeight * lineHeight), so every 0.1 here is
+        // ~8% of the pane's rows. 1.1 keeps the lines from crowding while
+        // giving back most of what 1.2 was costing.
+        lineHeight: 1.1,
         scrollback: 10000,
         theme: {
           background: "#0f172a",
           foreground: "#f1f5f9",
           cursor: "#06b6d4",
           selectionBackground: "rgba(6, 182, 212, 0.3)",
+          // xterm 6 draws its own scrollbar slider (a VS Code scrollable
+          // element) and colours it from the theme, defaulting to the
+          // foreground at 20% — near-white on our dark background. Match the
+          // app's scrollbars instead; without these the slider is the only
+          // part of the terminal that doesn't follow the palette.
+          scrollbarSliderBackground: "rgba(148, 163, 184, 0.3)",
+          scrollbarSliderHoverBackground: "rgba(148, 163, 184, 0.5)",
+          scrollbarSliderActiveBackground: "rgba(148, 163, 184, 0.7)",
           black: "#1e293b",
           red: "#ef4444",
           green: "#10b981",
@@ -264,7 +275,7 @@ export function useTerminal({ id, fontSize, onStatusChange, onExit, onRenameDete
         // Skip while the container is collapsed/hidden — fitting at 0px yields
         // 0 cols and corrupts the terminal (the zero-width-terminal bug).
         if (container.clientWidth === 0 || container.clientHeight === 0) return;
-        scrollSafeFit(term, fitAddon, container);
+        scrollSafeFit(term, fitAddon);
         const dims = fitAddon.proposeDimensions();
         if (dims && dims.cols > 0 && dims.rows > 0) {
           ptyResize(id, dims.cols, dims.rows).catch(console.error);
@@ -307,7 +318,7 @@ export function useTerminal({ id, fontSize, onStatusChange, onExit, onRenameDete
     if (!term || !fitAddon || !container) return;
     term.options.fontSize = fontSize;
     if (container.clientWidth === 0 || container.clientHeight === 0) return;
-    scrollSafeFit(term, fitAddon, container);
+    scrollSafeFit(term, fitAddon);
     const dims = fitAddon.proposeDimensions();
     if (dims && dims.cols > 0 && dims.rows > 0) {
       ptyResize(id, dims.cols, dims.rows).catch(console.error);

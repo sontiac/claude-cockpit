@@ -136,13 +136,10 @@ button:active {
 .terminal-container .xterm {
   padding: 8px;
 }
-.terminal-container .xterm-viewport::-webkit-scrollbar {
-  width: 6px;
-}
-.terminal-container .xterm-viewport::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.3);
-  border-radius: 3px;
-}
+/* No scrollbar rules here: as of xterm 6 the terminal scrolls through a VS
+   Code scrollable element that draws its own slider, so `.xterm-viewport`
+   (an empty leftover div) has no scrollbar to style. The slider's colours
+   come from the `scrollbarSlider*` theme keys in useTerminal.ts. */
 
 /* macOS dictation feeds the terminal through the IME composition path, and
    xterm.css renders pending composition text as a single absolutely-positioned
