@@ -123,6 +123,16 @@ export function useTerminal({ id, fontSize, onStatusChange, onExit, onRenameDete
         // giving back most of what 1.2 was costing.
         lineHeight: 1.1,
         scrollback: 10000,
+        // xterm consumes wheel events itself, so the OS pointer settings
+        // (System Settings → Mouse → scroll speed) never reach it — these
+        // multipliers are the only scroll-speed control. 3× makes a notched
+        // mouse wheel usable; Alt+wheel jumps by pages.
+        scrollSensitivity: 3,
+        fastScrollSensitivity: 12,
+        // Give the scrollbar an explicit width — at xterm 6's default the
+        // overlay bar is easy to miss entirely. Width also enables the
+        // overview ruler under the bar.
+        scrollbar: { width: 12 },
         theme: {
           background: "#0f172a",
           foreground: "#f1f5f9",
