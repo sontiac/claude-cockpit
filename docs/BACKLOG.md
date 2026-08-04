@@ -20,3 +20,7 @@ linked spec/commit when picked up.
   stores together); extract shared pomodoro Start/Pause/Reset controls
   (compact/full duplication); useElementSize multi-entry latest-wins test;
   scope CharacterCard "Sessions" stat test query. Flagged 2026-07-15.
+- B5 — In-app settings page: scroll sensitivity (hardcoded 3× in useTerminal
+  since eb4b48e), scrollbar width, font, voice hotkey/model (~/.claude-cockpit/
+  voice.json), theme — one surface instead of scattered constants/config files.
+  Proposed by user 2026-08-03.
