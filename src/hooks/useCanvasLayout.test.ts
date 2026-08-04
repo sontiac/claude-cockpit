@@ -5,6 +5,7 @@ import {
   resizeRect,
   MIN_W,
   MIN_H,
+  MARGIN,
   useCanvasLayout,
 } from "./useCanvasLayout";
 
@@ -133,11 +134,10 @@ describe("pristine-canvas auto-tiling", () => {
     const moved = { x: 40, y: 40, w: 300, h: 200 };
     act(() => result.current.setRect("a", moved));
     rerender({ ids: ["a", "b", "c"], surface: size });
-    // The hand-placed pane keeps its rect; the newcomer staggers instead of
-    // re-tiling everything.
+    // The hand-placed pane keeps its rect; the newcomer is seeded on top of
+    // the arrangement instead of re-tiling everything.
     expect(result.current.layout["a"]).toEqual(moved);
-    expect(result.current.layout["c"].w).toBe(520);
-    expect(result.current.layout["c"].h).toBe(340);
+    expect(result.current.layout["c"].h).toBe(size.height - 2 * MARGIN);
   });
 
   it("stops auto-tiling once an arrange preset has been applied", () => {
@@ -145,7 +145,89 @@ describe("pristine-canvas auto-tiling", () => {
     rerender({ ids: ["a", "b"], surface: size });
     act(() => result.current.setAll(tileRects(["a", "b"], 1, 1000, 600)));
     rerender({ ids: ["a", "b", "c"], surface: size });
-    expect(result.current.layout["c"].w).toBe(520);
+    expect(result.current.layout["c"].h).toBe(size.height - 2 * MARGIN);
+  });
+
+  // A pane seeded at a fixed 340px held only ~8 rows at a zoomed font size,
+  // which is too few for a full-screen TUI to draw into. Seeded panes now take
+  // the canvas's full height so they hold as many rows as a tiled one.
+  describe("seeding onto an already-arranged canvas", () => {
+    function arrangedThenAdd(surface: { width: number; height: number }) {
+      const { result, rerender } = renderHook(
+        ({ ids, s }: { ids: string[]; s: typeof surface }) =>
+          useCanvasLayout(ids, s),
+        { initialProps: { ids: ["a"] as string[], s: surface } }
+      );
+      act(() => result.current.setRect("a", { x: 0, y: 0, w: 300, h: 200 }));
+      rerender({ ids: ["a", "b"], s: surface });
+      return result;
+    }
+
+    it("gives the newcomer the canvas's full height", () => {
+      const result = arrangedThenAdd({ width: 1600, height: 900 });
+      expect(result.current.layout["b"].y).toBe(MARGIN);
+      expect(result.current.layout["b"].h).toBe(900 - 2 * MARGIN);
+    });
+
+    it("scales the newcomer's width with the canvas instead of a fixed 520", () => {
+      const narrow = arrangedThenAdd({ width: 1000, height: 900 });
+      const wide = arrangedThenAdd({ width: 2400, height: 900 });
+      expect(wide.current.layout["b"].w).toBeGreaterThan(
+        narrow.current.layout["b"].w
+      );
+    });
+
+    it("never seeds a pane past the right edge of the canvas", () => {
+      const surface = { width: 1000, height: 700 };
+      const { result, rerender } = renderHook(
+        ({ ids, s }: { ids: string[]; s: typeof surface }) =>
+          useCanvasLayout(ids, s),
+        { initialProps: { ids: ["a"] as string[], s: surface } }
+      );
+      act(() => result.current.setRect("a", { x: 0, y: 0, w: 300, h: 200 }));
+      const ids = ["a"];
+      for (let i = 0; i < 12; i++) {
+        ids.push(`n${i}`);
+        rerender({ ids: [...ids], s: surface });
+        const r = result.current.layout[`n${i}`];
+        expect(r.x).toBeGreaterThanOrEqual(MARGIN);
+        expect(r.x + r.w).toBeLessThanOrEqual(surface.width - MARGIN);
+      }
+    });
+
+    it("cascades so a newcomer never lands exactly on the previous one", () => {
+      const surface = { width: 1600, height: 900 };
+      const { result, rerender } = renderHook(
+        ({ ids, s }: { ids: string[]; s: typeof surface }) =>
+          useCanvasLayout(ids, s),
+        { initialProps: { ids: ["a"] as string[], s: surface } }
+      );
+      act(() => result.current.setRect("a", { x: 0, y: 0, w: 300, h: 200 }));
+      rerender({ ids: ["a", "b"], s: surface });
+      rerender({ ids: ["a", "b", "c"], s: surface });
+      expect(result.current.layout["c"].x).not.toBe(
+        result.current.layout["b"].x
+      );
+    });
+
+    it("leaves every already-placed pane exactly where it was", () => {
+      const surface = { width: 1600, height: 900 };
+      const { result, rerender } = renderHook(
+        ({ ids, s }: { ids: string[]; s: typeof surface }) =>
+          useCanvasLayout(ids, s),
+        { initialProps: { ids: ["a"] as string[], s: surface } }
+      );
+      const placed = { x: 111, y: 222, w: 333, h: 444 };
+      act(() => result.current.setRect("a", placed));
+      rerender({ ids: ["a", "b"], s: surface });
+      expect(result.current.layout["a"]).toEqual(placed);
+    });
+
+    it("still clamps to the minimum size on a tiny canvas", () => {
+      const result = arrangedThenAdd({ width: 200, height: 100 });
+      expect(result.current.layout["b"].w).toBeGreaterThanOrEqual(MIN_W);
+      expect(result.current.layout["b"].h).toBeGreaterThanOrEqual(MIN_H);
+    });
   });
 
   it("re-tiles the remaining panes when one closes while untouched", () => {

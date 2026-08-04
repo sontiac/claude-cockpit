@@ -8,13 +8,19 @@ export interface Rect {
   h: number;
 }
 
-// Default size of a freshly-placed terminal on the canvas, and the gap used when
-// auto-tiling new terminals so they don't all stack on the same spot.
-const DEFAULT_W = 520;
-const DEFAULT_H = 340;
+// Size of a freshly-placed pane before the surface has been measured. The real
+// seed size is derived from the surface (see seedRect); this is only the
+// transient fallback for the frame or two before ResizeObserver reports in.
+const UNMEASURED_W = 520;
+const UNMEASURED_H = 340;
 const GAP = 20;
-const MARGIN = 20;
-const COLS = 3;
+export const MARGIN = 20;
+
+// A seeded pane takes roughly this fraction of the canvas width (as one of N
+// side-by-side columns), and cascades right by CASCADE_STEP each time so a
+// newcomer never lands exactly on top of the previous one.
+const SEED_COLUMNS = 3;
+const CASCADE_STEP = 32;
 
 export const MIN_W = 240;
 export const MIN_H = 140;
@@ -54,15 +60,38 @@ export function resizeRect(
   return next;
 }
 
-function seedRect(index: number): Rect {
-  const col = index % COLS;
-  const row = Math.floor(index / COLS);
-  return {
-    x: MARGIN + col * (DEFAULT_W + GAP),
-    y: MARGIN + row * (DEFAULT_H + GAP),
-    w: DEFAULT_W,
-    h: DEFAULT_H,
-  };
+/**
+ * Geometry for a pane arriving on a canvas the user has already arranged. It is
+ * placed *on top* of the existing layout rather than re-tiling: once panes have
+ * been positioned by hand, moving them out from under the user is worse than a
+ * temporary overlap, and the newcomer is the active pane so it renders above.
+ *
+ * Height is the full canvas height. A fixed height (this used to be 340px) is
+ * what starved new terminals of rows — at a zoomed font that is ~8 rows, far
+ * too few for a full-screen TUI to draw a question or task list into. Taking
+ * the full height means a seeded pane holds exactly as many rows as a tiled one.
+ *
+ * Width is one of SEED_COLUMNS columns so it scales with the canvas, and x
+ * cascades by CASCADE_STEP, wrapping before the pane could run off the right
+ * edge — a newcomer that lands out of view is worse than one that overlaps.
+ */
+function seedRect(index: number, surfaceW: number, surfaceH: number): Rect {
+  if (surfaceW <= 0 || surfaceH <= 0) {
+    // Surface not measured yet; the pristine branch re-tiles once it is.
+    return { x: MARGIN, y: MARGIN, w: UNMEASURED_W, h: UNMEASURED_H };
+  }
+
+  const w = Math.max(
+    MIN_W,
+    (surfaceW - 2 * MARGIN - (SEED_COLUMNS - 1) * GAP) / SEED_COLUMNS
+  );
+  const h = Math.max(MIN_H, surfaceH - 2 * MARGIN);
+
+  // How many cascade steps fit before the pane's right edge passes the margin.
+  const span = surfaceW - MARGIN - w - MARGIN;
+  const slots = span > 0 ? Math.floor(span / CASCADE_STEP) + 1 : 1;
+
+  return { x: MARGIN + (index % slots) * CASCADE_STEP, y: MARGIN, w, h };
 }
 
 /**
@@ -168,7 +197,7 @@ export function useCanvasLayout(ids: string[], surfaceSize: ElementSize) {
       const next: Record<string, Rect> = {};
       let seedCount = Object.keys(prev).length;
       for (const id of ids) {
-        next[id] = prev[id] ?? seedRect(seedCount++);
+        next[id] = prev[id] ?? seedRect(seedCount++, width, height);
       }
       return next;
     });
