@@ -219,11 +219,14 @@ describe("Sidebar project provider launch", () => {
     fireEvent.click(screen.getByText("proj")); // expand sessions
     await waitFor(() => expect(screen.getByText("Kimi chat")).toBeInTheDocument());
     fireEvent.click(screen.getByText("Kimi chat"));
+    // The project id rides along so resumed terminals count toward their
+    // project's sidebar tally (they used to spawn project-less).
     expect(onResumeSession).toHaveBeenCalledWith(
       "s-kimi",
       "/tmp/proj",
       expect.stringContaining("Kimi chat"),
-      "kimi"
+      "kimi",
+      "p1"
     );
     vi.mocked(getSessions).mockResolvedValue(sessions);
   });
@@ -248,7 +251,8 @@ describe("Sidebar project provider launch", () => {
       "s-plain",
       "/tmp/proj",
       expect.stringContaining("Plain chat"),
-      "kimi"
+      "kimi",
+      "p1"
     );
     // The menu closes after picking.
     expect(screen.queryByText("Open with Kimi")).not.toBeInTheDocument();

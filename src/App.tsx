@@ -250,13 +250,23 @@ export function App() {
   );
 
   const handleResumeSession = useCallback(
-    async (sessionId: string, cwd: string, label: string, provider?: string) => {
+    async (
+      sessionId: string,
+      cwd: string,
+      label: string,
+      provider: string | undefined,
+      projectId: string
+    ) => {
       play("click");
       await spawn({
         cwd,
         resumeSessionId: sessionId,
         label,
         provider,
+        // Carry the project so resumed terminals count toward the sidebar's
+        // per-project tally (they used to spawn project-less and vanish
+        // from the counts).
+        projectId,
       });
     },
     [spawn, play]

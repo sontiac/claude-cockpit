@@ -46,7 +46,8 @@ interface SidebarProps {
     sessionId: string,
     cwd: string,
     label: string,
-    provider?: string
+    provider: string | undefined,
+    projectId: string
   ) => void;
 }
 
@@ -105,7 +106,8 @@ function ProjectSection({
     sessionId: string,
     cwd: string,
     label: string,
-    provider?: string
+    provider: string | undefined,
+    projectId: string
   ) => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onSessionContextMenu: (e: React.MouseEvent, session: Session) => void;
@@ -239,7 +241,8 @@ function ProjectSection({
                       session.session_id,
                       session.cwd,
                       resumeLabel(project.name, session),
-                      providerForModel(session.model, providers)
+                      providerForModel(session.model, providers),
+                      project.id
                     );
                   }}
                   className="w-full text-left px-2 py-1.5 pr-7 rounded-md hover:bg-white/5"
@@ -486,7 +489,8 @@ export function Sidebar({
                       menu.session.session_id,
                       menu.session.cwd,
                       resumeLabel(menu.project.name, menu.session),
-                      opt.providerId
+                      opt.providerId,
+                      menu.project.id
                     );
                     setMenu(null);
                   }}
