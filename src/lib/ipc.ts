@@ -55,11 +55,11 @@ export interface ProviderSummary {
 export const listProviders = () => invoke<ProviderSummary[]>("list_providers");
 
 /** Open a new independent app window (its own workspaces + terminals).
- *  Pass a label + geometry to recreate a saved window in place. */
-export const openWindow = (label?: string, geometry?: Geometry) =>
+ *  Pass a label + frame (logical points) to recreate a saved window in place. */
+export const openWindow = (label?: string, frame?: Geometry) =>
   invoke<void>("open_window", {
     label: label ?? null,
-    geometry: geometry ?? null,
+    frame: frame ?? null,
   });
 
 /** Toggle maximize for the calling window on its *current* monitor (tao's

@@ -30,9 +30,11 @@ pub struct Workspace {
     pub name: String,
 }
 
-/// A window's on-screen rectangle in physical pixels, so it can reopen on the
-/// same monitor/spot. Physical throughout (JS reads physical, Rust applies
-/// physical) to avoid scale-factor conversions.
+/// An x/y/width/height rectangle. The unit depends on the use site: persisted
+/// window frames ([`WindowState::frame`]) are in *logical points* — the OS's
+/// global coordinate space, unambiguous across mixed-DPI monitors — while the
+/// maximize bookkeeping in `commands::window` measures and applies *physical
+/// pixels* within a single monitor.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Geometry {
     pub x: i32,
@@ -51,8 +53,13 @@ pub struct WindowState {
     pub terminals: Vec<PersistedTerminal>,
     #[serde(default)]
     pub active_workspace_id: Option<String>,
+    /// The window's on-screen frame in logical points, so it can reopen on the
+    /// same monitor/spot. Named `frame` (not `geometry`) deliberately: older
+    /// builds persisted physical pixels under `geometry`, which restore to the
+    /// wrong rectangle on mixed-DPI monitor setups — renaming the key discards
+    /// those stale values instead of misapplying them.
     #[serde(default)]
-    pub geometry: Option<Geometry>,
+    pub frame: Option<Geometry>,
     /// Whether the sidebar is pinned (docked). Unpinned sidebars hide and
     /// reveal on left-edge hover. Defaults to false (hidden).
     #[serde(default)]
@@ -267,5 +274,34 @@ mod tests {
         let json = serde_json::to_string(&state).unwrap();
         let back: WindowState = serde_json::from_str(&json).unwrap();
         assert!(back.sidebar_pinned);
+    }
+
+    /// Snapshots from builds that stored the frame in physical pixels used the
+    /// `geometry` key. Physical pixels are ambiguous across mixed-DPI monitors
+    /// (the same numbers mean different rectangles depending on which screen
+    /// does the conversion), so those values must be discarded, not reused.
+    #[test]
+    fn window_state_ignores_legacy_physical_geometry() {
+        let json = r#"{"workspaces":[],"terminals":[],"active_workspace_id":null,"geometry":{"x":0,"y":66,"width":3456,"height":2168}}"#;
+        let state: WindowState = serde_json::from_str(json).unwrap();
+        assert!(state.frame.is_none());
+    }
+
+    #[test]
+    fn window_state_round_trips_logical_frame() {
+        let state = WindowState {
+            frame: Some(Geometry {
+                x: -2560,
+                y: -193,
+                width: 1728,
+                height: 1084,
+            }),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&state).unwrap();
+        let back: WindowState = serde_json::from_str(&json).unwrap();
+        let frame = back.frame.unwrap();
+        assert_eq!((frame.x, frame.y), (-2560, -193));
+        assert_eq!((frame.width, frame.height), (1728, 1084));
     }
 }

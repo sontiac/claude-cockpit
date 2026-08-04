@@ -15,6 +15,7 @@ import { generateId } from "../lib/utils";
 import { DEFAULT_COMMAND, PROJECT_COLORS } from "../lib/constants";
 import { restoreCommand } from "../lib/restore";
 import { playSound } from "../lib/sounds";
+import { toLogicalFrame } from "../lib/frame";
 import type {
   TerminalInfo,
   TerminalStatus,
@@ -42,12 +43,17 @@ function defaultWorkspace(): Workspace {
   return { id: generateId(), name: "Workspace 1" };
 }
 
-async function currentGeometry(): Promise<Geometry | null> {
+/** The window's current frame in logical points (physical pixels are
+ *  ambiguous across mixed-DPI monitors, so they never touch disk). */
+async function currentFrame(): Promise<Geometry | null> {
   try {
     const win = getCurrentWindow();
-    const pos = await win.outerPosition();
-    const size = await win.innerSize();
-    return { x: pos.x, y: pos.y, width: size.width, height: size.height };
+    const [pos, size, scale] = await Promise.all([
+      win.outerPosition(),
+      win.innerSize(),
+      win.scaleFactor(),
+    ]);
+    return toLogicalFrame(pos, size, scale);
   } catch {
     return null;
   }
@@ -61,7 +67,7 @@ interface RestorePrompt {
 
 interface PendingSession {
   myTerminals: PersistedTerminal[];
-  secondaries: { label: string; geometry: Geometry | null }[];
+  secondaries: { label: string; frame: Geometry | null }[];
   terminalCount: number;
   windowCount: number;
 }
@@ -330,7 +336,7 @@ export function useTerminals() {
         const secStates = await Promise.all(
           secLabels.map(async (l) => {
             const s = await getWindowState(l).catch(() => null);
-            return s ? { label: l, geometry: s.geometry, terminals: s.terminals } : null;
+            return s ? { label: l, frame: s.frame, terminals: s.terminals } : null;
           })
         );
         const secondaries = secStates.filter(
@@ -348,7 +354,7 @@ export function useTerminals() {
             myTerminals,
             secondaries: secondaries.map((s) => ({
               label: s.label,
-              geometry: s.geometry,
+              frame: s.frame,
             })),
             terminalCount,
             windowCount,
@@ -375,7 +381,7 @@ export function useTerminals() {
     if (p) {
       await restoreTerminals(p.myTerminals, activeWorkspaceId);
       for (const s of p.secondaries) {
-        await openWindow(s.label, s.geometry ?? undefined).catch((e) =>
+        await openWindow(s.label, s.frame ?? undefined).catch((e) =>
           console.error("Failed to reopen window:", e)
         );
       }
@@ -420,13 +426,13 @@ export function useTerminals() {
   useEffect(() => {
     if (!persistArmed || closingRef.current) return;
     let cancelled = false;
-    currentGeometry().then((geometry) => {
+    currentFrame().then((frame) => {
       if (cancelled) return;
       saveWindowState(WINDOW_LABEL, {
         workspaces,
         terminals: terminals.map(toPersisted),
         active_workspace_id: activeWorkspaceId,
-        geometry,
+        frame,
         sidebar_pinned: sidebarPinned,
       }).catch((error) => console.error("Failed to persist window:", error));
     });

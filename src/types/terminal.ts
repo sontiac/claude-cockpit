@@ -35,7 +35,9 @@ export interface Workspace {
   name: string;
 }
 
-/** A window's on-screen rectangle in physical pixels, for reopening in place. */
+/** A window's on-screen rectangle in logical points, for reopening in place.
+ *  Logical (not physical) because physical pixels are ambiguous across
+ *  mixed-DPI monitors — see `toLogicalFrame` in lib/frame.ts. */
 export interface Geometry {
   x: number;
   y: number;
@@ -48,7 +50,7 @@ export interface WindowState {
   workspaces: Workspace[];
   terminals: PersistedTerminal[];
   active_workspace_id: string | null;
-  geometry: Geometry | null;
+  frame: Geometry | null;
   /** Sidebar docked (pinned) vs hidden-with-edge-hover. Default false. */
   sidebar_pinned: boolean;
 }

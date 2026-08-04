@@ -11,7 +11,7 @@ pub mod stats;
 pub mod workspace;
 
 use state::AppState;
-use tauri::{Manager, PhysicalPosition, PhysicalSize};
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -43,10 +43,9 @@ pub fn run() {
         // without this every reopen starts at 1280x800 — and the session
         // restore would tile panes against that small surface.
         .setup(|app| {
-            if let Some(g) = workspace::store::get_window_state("main").geometry {
+            if let Some(f) = workspace::store::get_window_state("main").frame {
                 if let Some(win) = app.get_webview_window("main") {
-                    let _ = win.set_size(PhysicalSize::new(g.width, g.height));
-                    let _ = win.set_position(PhysicalPosition::new(g.x, g.y));
+                    commands::window::restore_frame(&win, &f);
                 }
             }
             Ok(())

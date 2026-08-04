@@ -1,6 +1,6 @@
 use tauri::{
-    AppHandle, Manager, PhysicalPosition, PhysicalSize, State, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder,
+    AppHandle, LogicalPosition, LogicalSize, Manager, PhysicalPosition, PhysicalSize, State,
+    WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
 
 use crate::error::CockpitError;
@@ -51,18 +51,70 @@ fn next_window_label(
     Some(ring[target].clone())
 }
 
+/// Minimum visible chunk of a window's title strip, in logical points, for a
+/// saved frame to be worth restoring: enough of the bar to see and grab.
+const MIN_GRAB_W: i32 = 100;
+const MIN_GRAB_H: i32 = 20;
+/// Height of the grabbable strip at the top of a frame (the TopBar region).
+const TITLE_STRIP_H: i32 = 40;
+
+/// Whether a saved frame (logical points) can be meaningfully restored on the
+/// currently connected monitors: some monitor must show enough of the frame's
+/// title strip to grab. Guards against restoring onto a monitor that has been
+/// unplugged or rearranged, which would strand the window off-screen with no
+/// way to drag it back.
+fn frame_restorable(frame: &Geometry, monitors: &[Geometry]) -> bool {
+    let strip_h = TITLE_STRIP_H.min(frame.height as i32);
+    monitors.iter().any(|m| {
+        let visible_w =
+            (frame.x + frame.width as i32).min(m.x + m.width as i32) - frame.x.max(m.x);
+        let visible_h = (frame.y + strip_h).min(m.y + m.height as i32) - frame.y.max(m.y);
+        visible_w >= MIN_GRAB_W && visible_h >= MIN_GRAB_H
+    })
+}
+
+/// A monitor's work area in logical points (its own scale factor converts the
+/// physical values tao reports).
+fn monitor_logical_work_area(monitor: &tauri::Monitor) -> Geometry {
+    let scale = monitor.scale_factor();
+    let area = monitor.work_area();
+    Geometry {
+        x: (area.position.x as f64 / scale).round() as i32,
+        y: (area.position.y as f64 / scale).round() as i32,
+        width: (area.size.width as f64 / scale).round() as u32,
+        height: (area.size.height as f64 / scale).round() as u32,
+    }
+}
+
+/// Apply a saved logical-point frame to a window — unless no connected monitor
+/// could show its title bar (saved on a now-unplugged monitor, say), in which
+/// case the window keeps its default frame rather than opening stranded
+/// off-screen. Logical points need no scale-factor conversion, so this is
+/// exact regardless of which mixed-DPI monitor the window lands on.
+pub fn restore_frame(window: &WebviewWindow, frame: &Geometry) {
+    let monitors: Vec<Geometry> = match window.available_monitors() {
+        Ok(ms) => ms.iter().map(monitor_logical_work_area).collect(),
+        Err(_) => return,
+    };
+    if !frame_restorable(frame, &monitors) {
+        return;
+    }
+    let _ = window.set_size(LogicalSize::new(frame.width as f64, frame.height as f64));
+    let _ = window.set_position(LogicalPosition::new(frame.x as f64, frame.y as f64));
+}
+
 /// Open a new top-level app window. Each window runs an independent instance of
 /// the UI (its own workspaces + terminals), so it can be dragged to another
 /// monitor and show a different workspace.
 ///
 /// `label` lets the session-restore flow recreate a window under its original
 /// label (so it reloads its saved state); omit it for a brand-new window.
-/// `geometry` restores the window's on-screen position/size (physical pixels).
+/// `frame` restores the window's on-screen position/size (logical points).
 #[tauri::command]
 pub fn open_window(
     app: AppHandle,
     label: Option<String>,
-    geometry: Option<Geometry>,
+    frame: Option<Geometry>,
 ) -> Result<(), CockpitError> {
     let label = label.unwrap_or_else(|| format!("window-{}", uuid::Uuid::new_v4().simple()));
 
@@ -81,10 +133,8 @@ pub fn open_window(
         .build()
         .map_err(|e| CockpitError::Window(e.to_string()))?;
 
-    // Restore geometry in physical pixels (matches what the frontend saved).
-    if let Some(g) = geometry {
-        let _ = window.set_size(PhysicalSize::new(g.width, g.height));
-        let _ = window.set_position(PhysicalPosition::new(g.x, g.y));
+    if let Some(f) = frame {
+        restore_frame(&window, &f);
     }
 
     Ok(())
@@ -293,6 +343,47 @@ mod tests {
         let d = centered_default(&work);
         assert_eq!((d.x, d.y), (0, 25));
         assert_eq!((d.width, d.height), (1024, 640));
+    }
+
+    #[test]
+    fn frame_inside_a_monitor_is_restorable() {
+        let monitors = [geo(0, 0, 1728, 1117)];
+        assert!(frame_restorable(&geo(100, 100, 1280, 800), &monitors));
+    }
+
+    #[test]
+    fn frame_on_a_secondary_monitor_is_restorable() {
+        // Monitor arranged left of the primary: negative logical coordinates.
+        let monitors = [geo(0, 0, 1728, 1117), geo(-2560, -193, 2560, 1440)];
+        assert!(frame_restorable(&geo(-2400, 0, 1280, 800), &monitors));
+    }
+
+    #[test]
+    fn frame_off_every_monitor_is_not_restorable() {
+        // e.g. saved on an external monitor that has since been unplugged.
+        let monitors = [geo(0, 0, 1728, 1117)];
+        assert!(!frame_restorable(&geo(2000, 1300, 1280, 800), &monitors));
+    }
+
+    #[test]
+    fn frame_with_title_bar_above_every_screen_is_not_restorable() {
+        // The body intersects the monitor but the top strip — the only part
+        // you can grab to move the window — is above the visible area.
+        let monitors = [geo(0, 25, 1728, 1092)];
+        assert!(!frame_restorable(&geo(100, -300, 1280, 800), &monitors));
+    }
+
+    #[test]
+    fn frame_with_sliver_of_title_bar_visible_is_not_restorable() {
+        // Only a few points of the title strip poke onto the screen — not
+        // enough to grab. Falls back to the default frame instead.
+        let monitors = [geo(0, 0, 1728, 1117)];
+        assert!(!frame_restorable(&geo(1720, 500, 1280, 800), &monitors));
+    }
+
+    #[test]
+    fn no_monitors_means_not_restorable() {
+        assert!(!frame_restorable(&geo(0, 0, 1280, 800), &[]));
     }
 
     #[test]
