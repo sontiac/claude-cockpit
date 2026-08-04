@@ -67,16 +67,28 @@ terminal status changes (for readback and future phone remote).
   pairing, TLS or tunnel — out of scope now, but nothing in v1 may assume
   the only client is the sidecar).
 
-### 2. Voice sidecar (Node + Claude Agent SDK)
+### 2. Voice sidecar (Node + Anthropic SDK Tool Runner)
+
+> **Amended 2026-08-03 (user-approved):** the agent harness is the Anthropic
+> SDK's **Tool Runner** (`client.beta.messages.toolRunner` + `betaZodTool`),
+> not the Claude Agent SDK — the agent is a small custom-tool loop over the
+> control channel and needs none of the Agent SDK's filesystem/bash harness.
+> **Mic capture moves to the cockpit webview** (`getUserMedia` + AudioWorklet
+> → 16kHz mono WAV): Node has no native mic API and every mic package shells
+> out to sox or needs fragile native builds. The sidecar still owns STT,
+> the agent, and TTS. whisper.cpp is already installed on this machine
+> (`whisper-cli` via Homebrew); only a model download is needed.
 
 Spawned and supervised by cockpit (auto-restart on crash, killed on quit).
-Owns the mic, whisper.cpp streaming transcription, TTS, and an Agent SDK
-agent whose tools map 1:1 onto the control channel commands.
+Owns whisper.cpp transcription, TTS, and a Tool Runner agent whose tools
+map 1:1 onto the control channel commands. Model + effort are config knobs
+(default `claude-opus-5` at low effort for snappy voice turns).
 
 - Push-to-talk flow: cockpit's global-shortcut handler (Tauri
-  global-shortcut plugin) sends `ptt_down`/`ptt_up` to the sidecar; the
-  sidecar records while held, transcribes on release, feeds the transcript
-  to the agent.
+  global-shortcut plugin, hold-to-talk via pressed/released states) tells
+  the frontend to record; on release the captured WAV travels over the
+  control channel to the sidecar, which transcribes it and feeds the
+  transcript to the agent.
 - The agent decides: control command(s) via tools, dictation
   (`write_to_pane` to the focused terminal), or a spoken answer built from
   `get_state`.
